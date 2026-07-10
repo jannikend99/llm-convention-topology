@@ -33,6 +33,7 @@ Extends [Ashery et al. (2025)](https://github.com/Ariel-Flint-Ashery/AI-norms) (
 | Phase 1 max | **5000** interactions (pilot observes censoring) |
 | Phase 2 horizon | **1000** post-gate interactions |
 | CM injection | `swap` mode (Ashery) |
+| Flip success (analysis) | `flip = 1` iff ≥95%/3N success **and** modal label = `committed_to`; `flip_resisted` if success but incumbent retained |
 
 Methods sourcebook: `Thesis_Writing/development/03_Methods/WORKING.md` (in thesis-writing submodule).
 
