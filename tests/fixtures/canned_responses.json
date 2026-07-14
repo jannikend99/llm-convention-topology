@@ -1,0 +1,38 @@
+[
+  {
+    "name": "well_formed_a",
+    "text": "{'value': 'A'; 'reason': 'A worked well last round so I will repeat it'}",
+    "options": ["A", "B"],
+    "expected": "A"
+  },
+  {
+    "name": "well_formed_b",
+    "text": "{'value': 'B'; 'reason': 'switching to B since the partner played B'}",
+    "options": ["A", "B"],
+    "expected": "B"
+  },
+  {
+    "name": "quoted_without_structured_field",
+    "text": "I think Player 1 should pick 'A' because it matched the partner twice in a row.",
+    "options": ["A", "B"],
+    "expected": "A"
+  },
+  {
+    "name": "malformed_no_option",
+    "text": "I am honestly not sure what to do here, there is no clear signal.",
+    "options": ["A", "B"],
+    "expected_error": "ParseError"
+  },
+  {
+    "name": "ambiguous_both_options",
+    "text": "Either 'A' or 'B' could work equally well, hard to say which is better.",
+    "options": ["A", "B"],
+    "expected_error": "ParseError"
+  },
+  {
+    "name": "structured_field_with_extra_whitespace",
+    "text": "{ 'value' :  'B' ; 'reason': 'sticking with the modal choice'}",
+    "options": ["A", "B"],
+    "expected": "B"
+  }
+]

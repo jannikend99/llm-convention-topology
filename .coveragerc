@@ -1,0 +1,7 @@
+[run]
+source = convention_topology, live
+omit = */tests/*
+
+[report]
+fail_under = 85
+show_missing = true

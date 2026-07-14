@@ -1,0 +1,73 @@
+network:
+  network_type: complete            # complete | random_regular | lattice (CLI-overridable)
+  degree: 4
+minority:
+  minority_size_set: [1, 2, 3, 4, 5, 6]
+  committment_index: 1              # kept for Ashery compat; incumbent derived at gate
+params:
+  temperature: 0.5
+  total_interactions: 1000          # Phase 2 horizon
+  max_phase1_interactions: 5000
+  N: 24
+  convergence_time: 72              # 3N
+  convergence_threshold: 0.95
+  rewards_set: [[-50, 100]]
+  memory_size_set: [5]
+  options_set: [[Q, M]]
+run:
+  base_seed: 20260713               # grid-seed derivation root
+  checkpoint_every: 50
+  workers: 1
+  pilot_attempted_per_topology: 12
+  main_eligible_targets: {complete: [15, 20], random_regular: [8, 10], lattice: [8, 10]}
+  attempted_cap_factor: 3
+models:                             # registry (§4); active model chosen by CLI --model
+  llama31:
+    provider: openrouter
+    model_id: meta-llama/llama-3.1-70b-instruct
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    temperature: 0.5
+    max_tokens: 200
+    openrouter_provider:
+      allow_fallbacks: false
+      # only: ["<slug>"]  # pin after C-05 smoke (PROVIDER_ROUTING_PLAN.md)
+  qwen25:
+    provider: openrouter
+    model_id: qwen/qwen-2.5-72b-instruct
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    temperature: 0.5
+    max_tokens: 200
+    openrouter_provider:
+      allow_fallbacks: false
+      # only: ["<slug>"]  # pin after C-05 smoke
+  gpt54:
+    provider: openai
+    model_id: TBD-doug
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    temperature: 0.5
+    max_tokens: 200
+  claude55:
+    provider: anthropic
+    model_id: TBD-doug
+    base_url: https://api.anthropic.com/v1/
+    api_key_env: ANTHROPIC_API_KEY
+    temperature: 0.5
+    max_tokens: 200
+  gemini35:
+    provider: google
+    model_id: gemini-3.5-flash
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    api_key_env: GEMINI_API_KEY
+    temperature: 0.5
+    max_tokens: 200
+  mock:
+    provider: mock
+    model_id: mock
+    base_url: ""
+    api_key_env: ""
+    temperature: 0.5
+    max_tokens: 200
+paths: {data: data, logs: logs, outputs: outputs}   # data: run_paths() appends runs/{model}/{topology} itself (§6)

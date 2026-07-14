@@ -1,0 +1,5 @@
+coverage>=7.15,<8
+streamlit>=1.42,<2
+jupyter>=1.1
+nbconvert>=7.17
+ipykernel

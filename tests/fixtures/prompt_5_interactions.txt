@@ -1,0 +1,16 @@
+
+  Context: Player 1 is playing a multi-round partnership game with Player 2 for 100 rounds.
+  At each round, Player 1 and Player 2 simultaneously pick an action from the following values: ['A', 'B'].
+  The payoff that both players get is determined by the following rule:
+  1. If Players play the SAME action as each other, they will both be REWARDED with payoff +100 points.
+  2. If Players play DIFFERENT actions to each other, they will both be PUNISHED with payoff -50 points.
+  The objective of each Player is to maximize their own accumulated point tally, conditional on the behavior of the other player.
+  
+=====USER=====
+This is the history of choices in past rounds:
+ {'round': 1, 'Player 1': 'A', 'Player 2': 'A', 'payoff': 100}
+ {'round': 2, 'Player 1': 'B', 'Player 2': 'A', 'payoff': -50}
+ {'round': 3, 'Player 1': 'A', 'Player 2': 'A', 'payoff': 100}
+ {'round': 4, 'Player 1': 'A', 'Player 2': 'B', 'payoff': -50}
+ {'round': 5, 'Player 1': 'B', 'Player 2': 'B', 'payoff': 100}
+ It is now round 6. The current score of Player 1 is 200. Answer saying which value Player 1 should pick. Please think step by step before making a decision. Remember, examining history explicitly is important. Write your answer using the following format: {'value': <VALUE_OF_PLAYER_1>; 'reason': <YOUR_REASON>}. Answer saying which action Player 1 should play.

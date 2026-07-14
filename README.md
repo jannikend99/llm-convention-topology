@@ -33,20 +33,45 @@ Extends [Ashery et al. (2025)](https://github.com/Ariel-Flint-Ashery/AI-norms) (
 | Phase 1 max | **5000** interactions (pilot observes censoring) |
 | Phase 2 horizon | **1000** post-gate interactions |
 | CM injection | `swap` mode (Ashery) |
-| Flip success (analysis) | `flip = 1` iff ≥95%/3N success **and** modal label = `committed_to`; `flip_resisted` if success but incumbent retained |
+| Flip success (analysis) | `flip = 1` iff ≥95%/3N success **and** modal label = `committed_to`; non-flip = single censored category at horizon 1000 (no separate `flip_resisted` code — see Methods/Theory Fix Pack R2, 2026-07-13) |
 
 Methods sourcebook: `Thesis_Writing/development/03_Methods/WORKING.md` (in thesis-writing submodule).
 
+**Implementation SSOT:** [`WORKING.md`](WORKING.md) — charter · [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — execution checklist + **§7 dependency/API patterns** (rev. 3).
+
 ---
 
-## Planned scope (implementation TBD)
+## Implementation status
 
-- [ ] Centola-3 graph generators (lattice = thesis build)
-- [ ] Gate 0.95 + eligibility logging
-- [ ] Config snapshot per run (topology, model, seeds)
-- [ ] Pilot + main-study runners
-- [ ] Analysis scripts for Phase 1 / Phase 2 DVs
-- [ ] **Live analytics** during pilot (success rate, dominant share, gate proximity) — tooling TBD
+**Execution checklist:** [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — day-to-day todo list (phases A–G, 45 items) decomposed from `WORKING.md` §3.
+
+| Component | Status |
+| --- | --- |
+| `config.yaml` thesis locks (`convergence_threshold: 0.95`, `max_phase1_interactions: 5000`) | ✅ |
+| Stability gate (`convention_topology/gate.py`) | ✅ |
+| Phase 1 loop with hard cap (`convention_topology/simulation.py`) | ✅ |
+| Centola-3 networks incl. 1D ring lattice deg 4 (`convention_topology/networks.py`) | ✅ |
+| Unit tests (`tests/test_gate.py`) | ✅ |
+| **Implementation plan** — [`WORKING.md`](WORKING.md) §1–§13 fully specified (milestone 0) | ✅ |
+| Mock LLM layer + prompting port (`convention_topology/llm.py`, `prompting.py`) — WORKING §3 Phase A | ✅ |
+| Full run unit: Phase 1→2, persistence, metadata sidecar (`run.py`, `persistence.py`) — Phase B | ✅ |
+| LLM API layer, OpenAI-compatible + 3× retry (`llm.py`, `run_one.py`) — Phase C (offline-tested; ⏸ real-API smoke C-05 pending keys/model strings) | ✅ |
+| Pilot / main-study orchestration (`run_pilot.py`, `run_main.py`, dispatch logic in `convention_topology/orchestration.py`) — Phases D, G | ✅ |
+| Analysis scripts H1–H3b + H4, per model (`analysis/`, `analysis/dispatch.py`, `analyze.py`, `dvs.py`) — Phase F | ✅ |
+| **Code review remediation (2026-07-14)** — H3a GAM-vs-linear primary test, real `code_commit` sidecar, Phase 2 shared option shuffle, unified incumbent tie-break, H3b full-grid confirmatory check, thin-CLI extraction (`orchestration.py`/`analysis/dispatch.py`), persistence write/delete helpers, typed analysis exceptions — see [`CODE_REVIEW_REPORT.md`](CODE_REVIEW_REPORT.md) remediation table | ✅ |
+| **Live analytics** — Rich (`live/monitor.py`) + **Streamlit** (`live/web.py`) + notebook (`notebooks/pilot_dashboard.ipynb`) — Phase E | ✅ |
+
+**One-shot offline build complete (2026-07-14):** all 43 non-deferred todos in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) are ✅; full suite (121 tests) green; coverage 92% (≥85% gate). Deferred (⏸, need real API keys/model strings or real data): C-05 (paid manual smoke), G-03/G-04 (dependency freeze + repro pins at analysis freeze).
+
+### Gate fix (vs. Ashery public default)
+
+Ashery `config.yaml` sets `convergence_threshold: 1` (100% success in trailing 3N).
+The thesis build uses **0.95**, matching Ashery et al. (2025) Methods and the locked
+Methods chapter spec.
+
+```bash
+python -m unittest discover -s tests -v
+```
 
 ---
 
@@ -77,4 +102,6 @@ git clone git@github.com:jannikend99/llm-convention-topology.git
 
 ## Status
 
-**Scaffold only** — no experiment code yet. First implementation target: lattice generator + gate 0.95 fix before pilot.
+| **Provider routing (OpenRouter + direct APIs)** — [`PROVIDER_ROUTING_PLAN.md`](PROVIDER_ROUTING_PLAN.md) | ✅ |
+
+**One-shot offline build + provider routing complete (2026-07-14):** mock LLM layer, full run unit, OpenRouter/direct API client, pilot + main-study orchestration, live analytics (Rich + Streamlit + notebook), and H1–H4 analysis pipeline — **153 tests**, 91% coverage. Next: C-05 real-API smoke + pin `openrouter_provider.only`; commit implementation; pilot run.
