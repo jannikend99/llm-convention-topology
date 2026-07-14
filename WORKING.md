@@ -499,8 +499,8 @@ Retired Ashery keys: `network.alpha/beta/erdos_p` (scale-free/ER), `params.initi
 
 | Artifact | Pin location | Current value |
 | --- | --- | --- |
-| Thesis repo commit | `WORKING.md` + Appendix `tab:appendix-repro-pins` | `10912a6` (scaffold; freeze pin TBD at Phase G) — **stale as of 2026-07-14:** predates Phases A–G + R1/R2 remediation; **entire implementation still uncommitted**. Commit + refresh this row before real pilot (G-03/G-04 at analysis freeze). |
-| Ashery Zenodo release | Bib key `asheryAINormsZenodo2024` (⚠ missing from `literature.bib` — §13 #2) | DOI 10.5281/zenodo.14937173 |
+| Thesis repo commit | `WORKING.md` + Appendix `tab:appendix-repro-pins` | `e182e4f` (Phases A–G + R1/R2 + provider routing; pilot/main-study baseline). **Analysis-freeze tag** (`v1.0-analysis-freeze`) + exact `pip freeze` pins still TBD at G-03/G-04 after real data. |
+| Ashery Zenodo release | Bib key `asheryAINormsZenodo2024` | DOI 10.5281/zenodo.14937173 |
 | Ashery submodule commit (alignment snapshot) | README + Appendix | `e57aeef` = `publish` tag |
 | Model identifiers | Per-run sidecar `model_id` + Methods §2 | Llama/Qwen pinned; GPT-5.4/Claude 5.5 TBD (§13 #1) |
 | Python dependency versions | `requirements.txt` (exact pins at Phase G) | ranges for now |
