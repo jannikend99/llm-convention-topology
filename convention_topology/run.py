@@ -34,19 +34,37 @@ PROGRAM_EMERGENCE = "emergence"
 PROGRAM_CM = "cm"
 
 
-def _emit_progress(events: EventWriter, tracker: dict, phase: str, window: int) -> None:
+def _emit_progress(
+    events: EventWriter,
+    tracker: dict,
+    phase: str,
+    window: int,
+    *,
+    run_id: str | None = None,
+    console: bool = True,
+) -> None:
     t = len(tracker["outcome"])
     if t % 10 != 0:
         return
+    rolling = trailing_success_rate(tracker["outcome"], window)
+    dominant = _dominant_share(tracker, window)
     events.emit(
         {
             "type": f"{phase}_progress",
             "t": t,
             "phase": phase,
-            "rolling_success": trailing_success_rate(tracker["outcome"], window),
-            "dominant_share": _dominant_share(tracker, window),
+            "rolling_success": rolling,
+            "dominant_share": dominant,
         }
     )
+    # Terminal heartbeat every 50 interactions (events still every 10).
+    if console and run_id is not None and t % 50 == 0:
+        dom = f"{dominant:.2f}" if dominant is not None else "n/a"
+        roll = f"{rolling:.2f}" if rolling is not None else "n/a"
+        print(
+            f"[progress] {run_id}  {phase} t={t}  rolling_success={roll}  dominant_share={dom}",
+            flush=True,
+        )
 
 
 def _dominant_share(tracker: dict, window: int) -> float | None:
@@ -157,6 +175,7 @@ def execute_emergence_run(
     logs_dir: Path,
     retry_policy: RetryPolicy | None = None,
     now: Callable[[], str] = default_now,
+    console_progress: bool = True,
 ) -> RunPaths:
     """Organic empty-start Phase 1 until gate or cap. No CM."""
     if config.program != PROGRAM_EMERGENCE:
@@ -245,7 +264,9 @@ def execute_emergence_run(
             if gate.run_status != "incomplete":
                 break
             phase1_step(tracker)
-            _emit_progress(events, tracker, "phase1", convergence_time)
+            _emit_progress(
+                events, tracker, "phase1", convergence_time, run_id=run_id, console=console_progress
+            )
             interactions_since_checkpoint += 1
             if interactions_since_checkpoint >= config.checkpoint_every:
                 checkpoint("in_progress")
@@ -277,6 +298,7 @@ def execute_cm_run(
     logs_dir: Path,
     retry_policy: RetryPolicy | None = None,
     now: Callable[[], str] = default_now,
+    console_progress: bool = True,
 ) -> RunPaths:
     """Prepared population → swap CM → fixed Phase 2 horizon."""
     if config.program != PROGRAM_CM:
@@ -378,7 +400,9 @@ def execute_cm_run(
         def _phase2_step(t: dict) -> None:
             phase2_step(t)
             nonlocal interactions_since_checkpoint
-            _emit_progress(events, tracker, "phase2", convergence_time)
+            _emit_progress(
+                events, tracker, "phase2", convergence_time, run_id=run_id, console=console_progress
+            )
             interactions_since_checkpoint += 1
             if interactions_since_checkpoint >= config.checkpoint_every:
                 checkpoint("in_progress")
@@ -408,14 +432,27 @@ def execute_run(
     logs_dir: Path,
     retry_policy: RetryPolicy | None = None,
     now: Callable[[], str] = default_now,
+    console_progress: bool = True,
 ) -> RunPaths:
     """Dispatch to the program-specific executor."""
     if config.program == PROGRAM_EMERGENCE:
         return execute_emergence_run(
-            config, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=retry_policy, now=now
+            config,
+            client,
+            data_dir=data_dir,
+            logs_dir=logs_dir,
+            retry_policy=retry_policy,
+            now=now,
+            console_progress=console_progress,
         )
     if config.program == PROGRAM_CM:
         return execute_cm_run(
-            config, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=retry_policy, now=now
+            config,
+            client,
+            data_dir=data_dir,
+            logs_dir=logs_dir,
+            retry_policy=retry_policy,
+            now=now,
+            console_progress=console_progress,
         )
     raise ValueError(f"Unknown program {config.program!r}; expected {PROGRAM_EMERGENCE!r} or {PROGRAM_CM!r}")

@@ -23,6 +23,7 @@ from convention_topology.orchestration import (
     rewards as _rewards,
 )
 from convention_topology.prepared import make_prepared_population
+from convention_topology.persistence import read_meta
 from convention_topology.run import PROGRAM_CM, PROGRAM_EMERGENCE, execute_run
 from convention_topology.simulation import make_interaction_step, swap_committed
 
@@ -84,6 +85,11 @@ def run_full(config, model_spec, client, *, program, topology, cm_k, graph_seed,
         graph_seed=graph_seed,
         run_seed=run_seed,
     )
+    print(
+        f"[start] program={program} model={model_spec.shorthand} topology={topology} "
+        f"k={cm_k} run_seed={run_seed}",
+        flush=True,
+    )
     paths = execute_run(
         run_config,
         client,
@@ -91,7 +97,9 @@ def run_full(config, model_spec, client, *, program, topology, cm_k, graph_seed,
         logs_dir=Path(config.paths.logs),
         retry_policy=retry_policy_for(model_spec),
     )
-    print(f"run_id={paths.pickle_path.stem} meta={paths.meta_path}")
+    meta = paths.meta_path
+    status = read_meta(meta)["run_status"] if meta.exists() else "unknown"
+    print(f"[done]  run_id={paths.pickle_path.stem} status={status} meta={paths.meta_path}", flush=True)
 
 
 def main(argv: list[str] | None = None) -> int:

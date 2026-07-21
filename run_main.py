@@ -25,7 +25,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--config", default=None)
     parser.add_argument("--mock-policy", default="imitate_modal")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Across-cell parallelism (topology×k cells). Default 1; 2–4 ok for OpenRouter.",
+    )
     parser.add_argument("--retry-failed", action="store_true")
+    parser.add_argument("--quiet", action="store_true", help="Disable live [start]/[done]/[alive] progress.")
     args = parser.parse_args(argv)
 
     load_dotenv()
@@ -54,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
         mock_policy=args.mock_policy,
         retry_failed=args.retry_failed,
         topology_filter=args.topology,
+        workers=args.workers,
+        progress=not args.quiet,
     )
     for result in results:
         print(

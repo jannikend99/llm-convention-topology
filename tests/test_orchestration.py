@@ -70,6 +70,12 @@ class PilotGridTests(unittest.TestCase):
         self.assertEqual(pilot_grid(1, PROGRAM_EMERGENCE), emergence_pilot_grid(1))
         self.assertEqual(pilot_grid(1, PROGRAM_CM), cm_pilot_grid(1))
 
+    def test_topology_filter_keeps_twelve_complete_rows(self):
+        cells = pilot_grid(20260713, PROGRAM_EMERGENCE)
+        filtered = [cell for cell in cells if cell.topology == "complete"]
+        self.assertEqual(len(filtered), 12)
+        self.assertTrue(all(cell.topology == "complete" for cell in filtered))
+
 
 class ResumeAndRetryTests(unittest.TestCase):
     def test_completed_and_censored_runs_are_skipped_on_resume(self):
