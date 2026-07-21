@@ -3,17 +3,20 @@ network:
   degree: 4
 minority:
   minority_size_set: [1, 2, 3, 4, 5, 6]
-  committment_index: 1              # kept for Ashery compat; incumbent derived at gate
+  committment_index: 1              # Ashery compat; CM uses incumbent_index + committed_to
 params:
   temperature: 0.5
-  total_interactions: 1000          # Phase 2 horizon
+  total_interactions: 1000          # CM Phase 2 horizon
   max_phase1_interactions: 5000
   N: 24
   convergence_time: 72              # 3N
   convergence_threshold: 0.95
   rewards_set: [[-50, 100]]
   memory_size_set: [5]
-  options_set: [[Q, M]]
+  # Ashery split: W=10 emergence (Fig. 1) vs W=2 CM / bias
+  options_emergence: [A, B, C, D, E, F, G, H, I, J]
+  options_cm: [Q, M]
+  incumbent_index: 0                # prepared CM: options_cm[0] incumbent, other committed_to
 run:
   base_seed: 20260713               # grid-seed derivation root
   checkpoint_every: 50
@@ -28,46 +31,47 @@ models:                             # registry (§4); active model chosen by CLI
     base_url: https://openrouter.ai/api/v1
     api_key_env: OPENROUTER_API_KEY
     temperature: 0.5
-    max_tokens: 200
+    # 512: Ashery chat prompt asks for CoT then {'value':...}; 200 truncates before value (C-05)
+    max_tokens: 512
     openrouter_provider:
       allow_fallbacks: false
-      # only: ["<slug>"]  # pin after C-05 smoke (PROVIDER_ROUTING_PLAN.md)
+      only: ["deepinfra"]  # pinned C-05 2026-07-20
   qwen25:
     provider: openrouter
     model_id: qwen/qwen-2.5-72b-instruct
     base_url: https://openrouter.ai/api/v1
     api_key_env: OPENROUTER_API_KEY
     temperature: 0.5
-    max_tokens: 200
+    max_tokens: 512
     openrouter_provider:
       allow_fallbacks: false
-      # only: ["<slug>"]  # pin after C-05 smoke
+      only: ["deepinfra"]  # pinned C-05 2026-07-20 (only deepinfra|novita; novita 400s)
   gpt54:
     provider: openai
     model_id: TBD-doug
     base_url: https://api.openai.com/v1
     api_key_env: OPENAI_API_KEY
     temperature: 0.5
-    max_tokens: 200
+    max_tokens: 512
   claude55:
     provider: anthropic
     model_id: TBD-doug
     base_url: https://api.anthropic.com/v1/
     api_key_env: ANTHROPIC_API_KEY
     temperature: 0.5
-    max_tokens: 200
+    max_tokens: 512
   gemini35:
     provider: google
     model_id: gemini-3.5-flash
     base_url: https://generativelanguage.googleapis.com/v1beta/openai/
     api_key_env: GEMINI_API_KEY
     temperature: 0.5
-    max_tokens: 200
+    max_tokens: 512
   mock:
     provider: mock
     model_id: mock
     base_url: ""
     api_key_env: ""
     temperature: 0.5
-    max_tokens: 200
+    max_tokens: 512
 paths: {data: data, logs: logs, outputs: outputs}   # data: run_paths() appends runs/{model}/{topology} itself (§6)

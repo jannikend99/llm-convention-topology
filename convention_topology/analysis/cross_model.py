@@ -17,21 +17,24 @@ from convention_topology.analysis.common import critical_mass
 def cross_model_summary(per_model_run_tables: dict[str, pd.DataFrame]) -> dict[str, Any]:
     summary: dict[str, Any] = {}
     for model, df in per_model_run_tables.items():
-        eligible = df[df["eligibility"] == 1] if "eligibility" in df.columns else df.iloc[0:0]
-        # H1/H2 pool *all attempted* Phase 1 trajectories, censored included
-        # (03_Methods.tex:212,246) -- mean_dominant_share must match that
-        # population, not just gate-passed runs, or heavy censoring in a
-        # sparse topology silently inflates this descriptive stat relative
-        # to the confirmatory H1/H2 construct it's meant to summarize.
-        attempted = df[df["dominant_share"].notna()] if "dominant_share" in df.columns else df.iloc[0:0]
+        emergence = df[df["program"] == "emergence"] if "program" in df.columns else df.iloc[0:0]
+        cm = df[df["program"] == "cm"] if "program" in df.columns else df.iloc[0:0]
+        eligible_cm = cm[cm["eligibility"] == 1] if not cm.empty else cm
+        attempted_emergence = (
+            emergence[emergence["dominant_share"].notna()] if not emergence.empty else emergence
+        )
         summary[model] = {
-            "n_eligible": len(eligible),
-            "n_attempted": len(attempted),
+            "n_eligible": len(eligible_cm),
+            "n_attempted": len(attempted_emergence),
             "mean_dominant_share": (
-                float(attempted["dominant_share"].mean()) if not attempted.empty else None
+                float(attempted_emergence["dominant_share"].mean())
+                if not attempted_emergence.empty
+                else None
             ),
             "flip_rate": (
-                float(eligible["flip"].mean()) if not eligible.empty and "flip" in eligible.columns else None
+                float(eligible_cm["flip"].mean())
+                if not eligible_cm.empty and "flip" in eligible_cm.columns
+                else None
             ),
             "critical_mass": critical_mass(df).to_dict("records") if not df.empty else [],
         }

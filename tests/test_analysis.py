@@ -28,10 +28,16 @@ class EligibilityTableTests(unittest.TestCase):
     def test_counts_by_topology_and_model(self):
         runs = _runs_df(
             [
-                {"topology": "complete", "model_shorthand": "mock", "eligibility": 1, "run_status": "completed"},
-                {"topology": "complete", "model_shorthand": "mock", "eligibility": 0, "run_status": "censored"},
-                {"topology": "complete", "model_shorthand": "mock", "eligibility": 0, "run_status": "failed"},
-                {"topology": "lattice", "model_shorthand": "mock", "eligibility": 1, "run_status": "completed"},
+                {"topology": "complete", "model_shorthand": "mock", "program": "emergence",
+                 "eligibility": 1, "run_status": "completed"},
+                {"topology": "complete", "model_shorthand": "mock", "program": "emergence",
+                 "eligibility": 0, "run_status": "censored"},
+                {"topology": "complete", "model_shorthand": "mock", "program": "emergence",
+                 "eligibility": 0, "run_status": "failed"},
+                {"topology": "lattice", "model_shorthand": "mock", "program": "emergence",
+                 "eligibility": 1, "run_status": "completed"},
+                {"topology": "complete", "model_shorthand": "mock", "program": "cm",
+                 "eligibility": 1, "run_status": "completed"},
             ]
         )
         table = eligibility_table(runs).set_index(["topology", "model_shorthand"])
@@ -49,10 +55,14 @@ class CriticalMassTests(unittest.TestCase):
     def test_smallest_k_with_flip_rate_at_least_half(self):
         runs = _runs_df(
             [
-                {"topology": "complete", "model_shorthand": "mock", "cm_k": 1, "eligibility": 1, "flip": 0},
-                {"topology": "complete", "model_shorthand": "mock", "cm_k": 1, "eligibility": 1, "flip": 0},
-                {"topology": "complete", "model_shorthand": "mock", "cm_k": 2, "eligibility": 1, "flip": 1},
-                {"topology": "complete", "model_shorthand": "mock", "cm_k": 2, "eligibility": 1, "flip": 0},
+                {"topology": "complete", "model_shorthand": "mock", "program": "cm", "cm_k": 1,
+                 "eligibility": 1, "flip": 0},
+                {"topology": "complete", "model_shorthand": "mock", "program": "cm", "cm_k": 1,
+                 "eligibility": 1, "flip": 0},
+                {"topology": "complete", "model_shorthand": "mock", "program": "cm", "cm_k": 2,
+                 "eligibility": 1, "flip": 1},
+                {"topology": "complete", "model_shorthand": "mock", "program": "cm", "cm_k": 2,
+                 "eligibility": 1, "flip": 0},
             ]
         )
         result = critical_mass(runs).set_index(["topology", "model_shorthand"])
@@ -61,8 +71,10 @@ class CriticalMassTests(unittest.TestCase):
     def test_no_critical_mass_reached_gives_none(self):
         runs = _runs_df(
             [
-                {"topology": "lattice", "model_shorthand": "mock", "cm_k": 1, "eligibility": 1, "flip": 0},
-                {"topology": "lattice", "model_shorthand": "mock", "cm_k": 2, "eligibility": 1, "flip": 0},
+                {"topology": "lattice", "model_shorthand": "mock", "program": "cm", "cm_k": 1,
+                 "eligibility": 1, "flip": 0},
+                {"topology": "lattice", "model_shorthand": "mock", "program": "cm", "cm_k": 2,
+                 "eligibility": 1, "flip": 0},
             ]
         )
         result = critical_mass(runs).set_index(["topology", "model_shorthand"])
@@ -71,7 +83,8 @@ class CriticalMassTests(unittest.TestCase):
     def test_ineligible_runs_excluded(self):
         runs = _runs_df(
             [
-                {"topology": "complete", "model_shorthand": "mock", "cm_k": 1, "eligibility": 0, "flip": 1},
+                {"topology": "complete", "model_shorthand": "mock", "program": "cm", "cm_k": 1,
+                 "eligibility": 0, "flip": 1},
             ]
         )
         self.assertTrue(critical_mass(runs).empty)
@@ -162,7 +175,7 @@ class H3aAnalysisTests(unittest.TestCase):
     def test_sensitivity_50_exports_csv_not_json(self):
         # R2-m2: flip_agreement is locked to .csv (WORKING.md §8), not .json.
         rows = [
-            {"topology": "complete", "cm_k": k, "flip": f, "flip_50": f}
+            {"topology": "complete", "program": "cm", "cm_k": k, "flip": f, "flip_50": f}
             for k, f in zip([1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4], [0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1])
         ]
         runs_df = _runs_df(rows)
@@ -289,45 +302,45 @@ class CrossModelTests(unittest.TestCase):
     def test_descriptive_summary_per_model_no_pooling(self):
         df_a = pd.DataFrame(
             [
-                {"topology": "complete", "model_shorthand": "llama31", "cm_k": 1, "eligibility": 1,
-                 "flip": 0, "dominant_share": 0.9},
-                {"topology": "complete", "model_shorthand": "llama31", "cm_k": 2, "eligibility": 1,
-                 "flip": 1, "dominant_share": 0.95},
+                {"topology": "complete", "model_shorthand": "llama31", "program": "cm", "cm_k": 1,
+                 "eligibility": 1, "flip": 0, "dominant_share": None},
+                {"topology": "complete", "model_shorthand": "llama31", "program": "cm", "cm_k": 2,
+                 "eligibility": 1, "flip": 1, "dominant_share": None},
+                {"topology": "complete", "model_shorthand": "llama31", "program": "emergence", "cm_k": 0,
+                 "eligibility": 1, "flip": None, "dominant_share": 0.9},
+                {"topology": "complete", "model_shorthand": "llama31", "program": "emergence", "cm_k": 0,
+                 "eligibility": 1, "flip": None, "dominant_share": 0.95},
             ]
         )
         df_b = pd.DataFrame(
             [
-                {"topology": "complete", "model_shorthand": "qwen25", "cm_k": 1, "eligibility": 1,
-                 "flip": 1, "dominant_share": 0.8},
+                {"topology": "complete", "model_shorthand": "qwen25", "program": "cm", "cm_k": 1,
+                 "eligibility": 1, "flip": 1, "dominant_share": None},
+                {"topology": "complete", "model_shorthand": "qwen25", "program": "emergence", "cm_k": 0,
+                 "eligibility": 1, "flip": None, "dominant_share": 0.8},
             ]
         )
         summary = cross_model_summary({"llama31": df_a, "qwen25": df_b})
         self.assertEqual(summary["llama31"]["n_eligible"], 2)
         self.assertAlmostEqual(summary["llama31"]["mean_dominant_share"], 0.925)
         self.assertEqual(summary["qwen25"]["n_eligible"], 1)
-        # Each model's summary is computed independently -- no cross-model pooling.
         self.assertNotEqual(summary["llama31"]["mean_dominant_share"], summary["qwen25"]["mean_dominant_share"])
 
-    def test_mean_dominant_share_includes_censored_runs(self):
-        # H1/H2 pool all attempted Phase 1 trajectories, censored included
-        # (03_Methods.tex:212,246) -- a gate-censored run still has a
-        # dominant_share (post R2-B1) and must count toward this descriptive
-        # mean, even though it's excluded from n_eligible/flip_rate.
+    def test_mean_dominant_share_includes_censored_emergence_runs(self):
         df = pd.DataFrame(
             [
-                {"topology": "lattice", "model_shorthand": "llama31", "cm_k": 1, "eligibility": 1,
-                 "flip": 1, "dominant_share": 0.95},
-                {"topology": "lattice", "model_shorthand": "llama31", "cm_k": None, "eligibility": 0,
-                 "flip": None, "dominant_share": 0.30},  # censored: low share, no flip
+                {"topology": "lattice", "model_shorthand": "llama31", "program": "cm", "cm_k": 1,
+                 "eligibility": 1, "flip": 1, "dominant_share": None},
+                {"topology": "lattice", "model_shorthand": "llama31", "program": "emergence", "cm_k": 0,
+                 "eligibility": 1, "flip": None, "dominant_share": 0.95},
+                {"topology": "lattice", "model_shorthand": "llama31", "program": "emergence", "cm_k": 0,
+                 "eligibility": 0, "flip": None, "dominant_share": 0.30},
             ]
         )
         summary = cross_model_summary({"llama31": df})
         self.assertEqual(summary["llama31"]["n_eligible"], 1)
         self.assertEqual(summary["llama31"]["n_attempted"], 2)
         self.assertAlmostEqual(summary["llama31"]["mean_dominant_share"], (0.95 + 0.30) / 2)
-        # A summary that only looked at eligible rows would report 0.95 --
-        # overstating coordination relative to the Methods-locked H1/H2 pool.
-        self.assertNotAlmostEqual(summary["llama31"]["mean_dominant_share"], 0.95)
         self.assertAlmostEqual(summary["llama31"]["flip_rate"], 1.0)
 
 
@@ -347,38 +360,40 @@ class LoadRunTableN3Tests(unittest.TestCase):
             meta = {field: None for field in META_FIELDS}
             meta.update(
                 run_id="weird_run_id",
+                program="cm",
+                init_mode="prepared",
                 topology="complete",
                 cm_k=1,
                 model_shorthand="mock",
                 model_id="mock",
                 run_status="completed",
                 eligibility=1,
-                t_gate=72,
+                t_gate=0,
                 incumbent_label="A",
                 committed_to="B",
+                options=["A", "B"],
+                incumbent_index=0,
+                phase2_horizon=144,
             )
             write_meta(meta_path, meta)
-            # t_gate=72 + a full trailing window (72) of Phase 2 -- flip()/
-            # time_to_flip() need >= t_gate + window interactions (N5 guard).
+            # Prepared CM: tracker is Phase 2 only (t_gate=0); need >= window interactions.
             answers = [("B", "B")] * 144
             tracker = {"players": [[1, 2]] * 144, "answers": answers, "outcome": [1] * 144}
             simulation = {1: {"committed_tag": False, "my_history": ["B"] * 144}}
-            save_run_pickle(pickle_path, simulation, tracker, {"converged_index": 72, "committed_to": "B"})
+            save_run_pickle(pickle_path, simulation, tracker, {"converged_index": 0, "committed_to": "B"})
 
             runs_df = load_run_table(data_dir, model_filter="mock")
 
         self.assertEqual(len(runs_df), 1)
         row = runs_df.iloc[0]
-        self.assertIsNotNone(row["dominant_share"])
+        self.assertIsNone(row["dominant_share"])  # CM program: no emergence DVs
         self.assertIsNotNone(row["flip"])
 
 
 class Phase1WindowDVTests(unittest.TestCase):
-    """R2-B1: H1/H2's dominant_share/shannon_entropy must reflect the Phase-1-end
-    window (trailing 3N at the gate), not the raw tracker's tail -- which, for a
-    completed run, is the *end of Phase 2* after committed-minority injection."""
+    """H1/H2 dominant_share uses the emergence gate window."""
 
-    def _write_run(self, tmp: Path, *, run_status: str, t_gate: int | None, answers, outcome, committed_to=None):
+    def _write_emergence_run(self, tmp: Path, *, run_status: str, t_gate: int | None, answers, outcome):
         data_dir = Path(tmp) / "data"
         run_dir = data_dir / "runs" / "mock" / "complete"
         run_dir.mkdir(parents=True)
@@ -387,87 +402,118 @@ class Phase1WindowDVTests(unittest.TestCase):
 
         meta = {field: None for field in META_FIELDS}
         meta.update(
-            run_id="run", topology="complete", cm_k=1, model_shorthand="mock", model_id="mock",
-            run_status=run_status, eligibility=1 if run_status == "completed" else 0,
-            t_gate=t_gate, incumbent_label="A", committed_to=committed_to,
+            run_id="run",
+            program="emergence",
+            init_mode="organic",
+            topology="complete",
+            cm_k=0,
+            model_shorthand="mock",
+            model_id="mock",
+            run_status=run_status,
+            eligibility=1 if run_status == "completed" else 0,
+            t_gate=t_gate,
+            incumbent_label="A",
+            committed_to=None,
+            options=["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
+            phase2_horizon=None,
         )
         write_meta(meta_path, meta)
         tracker = {"players": [[1, 2]] * len(answers), "answers": answers, "outcome": outcome}
         simulation = {1: {"committed_tag": False, "my_history": [a[0] for a in answers]}}
-        save_run_pickle(pickle_path, simulation, tracker, {"converged_index": t_gate, "committed_to": committed_to})
+        save_run_pickle(pickle_path, simulation, tracker, {"converged_index": t_gate, "committed_to": None})
         return data_dir
 
-    def test_dominant_share_uses_phase1_window_not_tracker_tail(self):
-        # Phase 1 (72 interactions): 50 "A" pairs + 22 "B" pairs -> share_A = 100/144.
+    def test_dominant_share_uses_gate_window(self):
         phase1 = [("A", "A")] * 50 + [("B", "B")] * 22
-        # Phase 2 (72 interactions): 10 "A" pairs + 62 "B" pairs -> share_B = 124/144.
-        phase2 = [("A", "A")] * 10 + [("B", "B")] * 62
-        answers = phase1 + phase2
-        outcome = [1] * len(answers)  # 100% success -- trivially clears the 0.95 flip threshold
+        answers = phase1
+        outcome = [1] * len(answers)
 
         with tempfile.TemporaryDirectory() as tmp:
-            data_dir = self._write_run(
-                tmp, run_status="completed", t_gate=72, answers=answers, outcome=outcome, committed_to="B",
+            data_dir = self._write_emergence_run(
+                Path(tmp), run_status="completed", t_gate=72, answers=answers, outcome=outcome
             )
             runs_df = load_run_table(data_dir, model_filter="mock")
 
         row = runs_df.iloc[0]
         self.assertAlmostEqual(row["dominant_share"], 100 / 144, places=6)
-        # The bug computed this from the tracker's raw tail (Phase 2) instead.
-        self.assertNotAlmostEqual(row["dominant_share"], 124 / 144, places=2)
+        self.assertIsNone(row["flip"])
 
     def test_censored_run_contributes_dominant_share_to_h1(self):
-        answers = [("A", "A")] * 50 + [("B", "B")] * 22  # 72 interactions, never gated
-        outcome = [0] * len(answers)  # never reached the 0.95 gate -- that's why it censored
+        answers = [("A", "A")] * 50 + [("B", "B")] * 22
+        outcome = [0] * len(answers)
 
         with tempfile.TemporaryDirectory() as tmp:
-            data_dir = self._write_run(tmp, run_status="censored", t_gate=None, answers=answers, outcome=outcome)
+            data_dir = self._write_emergence_run(
+                Path(tmp), run_status="censored", t_gate=None, answers=answers, outcome=outcome
+            )
             runs_df = load_run_table(data_dir, model_filter="mock")
 
         row = runs_df.iloc[0]
         self.assertIsNotNone(row["dominant_share"])
         self.assertAlmostEqual(row["dominant_share"], 100 / 144, places=6)
-        self.assertIsNone(row["flip"])  # Phase 2 concept -- censored runs never enter Phase 2
+        self.assertIsNone(row["flip"])
 
         mixing = runs_df[(runs_df["topology"] == "complete") & runs_df["dominant_share"].notna()]
-        self.assertEqual(len(mixing), 1)  # censored run must reach run_h1's input, not be dropped
+        self.assertEqual(len(mixing), 1)
 
 
 class AnalyzeCliTests(unittest.TestCase):
-    def test_all_on_mocked_pilot_batch_emits_h1_through_h4_without_error(self):
+    def test_all_on_mocked_split_batch_emits_h1_through_h4_without_error(self):
         from convention_topology.config import derive_seeds, load_config, resolve_model
         from convention_topology.orchestration import GridCell, run_batch
+        from convention_topology.run import PROGRAM_CM, PROGRAM_EMERGENCE
 
         with tempfile.TemporaryDirectory() as tmp:
             data_dir, logs_dir, outputs_dir = Path(tmp) / "data", Path(tmp) / "logs", Path(tmp) / "outputs"
             config = load_config()
-            # Keep the thesis-locked N=24 (default): dvs.py's DEFAULT_WINDOW=72
-            # is a fixed Methods constant (3N at N=24), not derived from
-            # config.n -- a smaller N here would make Phase 1 gate before 72
-            # interactions exist, so H1/H2's Phase-1-window DV (R2-B1) would
-            # legitimately be None for every row. Mocked runs at N=24 are
-            # still fast (~0.1s/run).
+            config.params.total_interactions = 100
             model_spec = resolve_model(config, "mock")
-            cells = [
-                GridCell(topology, i, ((i - 1) % 6) + 1, *derive_seeds(1, topology, ((i - 1) % 6) + 1, i))
+            emergence_cells = [
+                GridCell(PROGRAM_EMERGENCE, topology, i, 0, *derive_seeds(1, topology, 0, i))
+                for topology in ("complete", "lattice", "random_regular")
+                for i in range(1, 3)
+            ]
+            cm_cells = [
+                GridCell(
+                    PROGRAM_CM,
+                    topology,
+                    i,
+                    ((i - 1) % 6) + 1,
+                    *derive_seeds(1, topology, ((i - 1) % 6) + 1, i),
+                )
                 for topology in ("complete", "lattice", "random_regular")
                 for i in range(1, 3)
             ]
             run_batch(
-                config, model_spec, cells, data_dir=data_dir, logs_dir=logs_dir,
-                mock_policy="imitate_modal", workers=1, retry_failed=False,
+                config,
+                model_spec,
+                emergence_cells + cm_cells,
+                data_dir=data_dir,
+                logs_dir=logs_dir,
+                mock_policy="imitate_modal",
+                workers=1,
+                retry_failed=False,
             )
 
             with warnings.catch_warnings():
-                warnings.simplefilter("ignore")  # small-n perfect-separation warnings expected on mocked data
+                warnings.simplefilter("ignore")
                 exit_code = analyze.main(
                     ["--all", "--model", "mock", "--data", str(data_dir), "--outputs", str(outputs_dir)]
                 )
             self.assertEqual(exit_code, 0)
 
             for name in (
-                "h1.json", "h1.csv", "h2.json", "h2.csv", "h3a.json", "h3a.csv",
-                "h3b.json", "h3b.csv", "h4.json", "h4.csv", "eligibility.csv",
+                "h1.json",
+                "h1.csv",
+                "h2.json",
+                "h2.csv",
+                "h3a.json",
+                "h3a.csv",
+                "h3b.json",
+                "h3b.csv",
+                "h4.json",
+                "h4.csv",
+                "eligibility.csv",
             ):
                 path = outputs_dir / "mock" / name
                 self.assertTrue(path.exists(), f"missing {path}")

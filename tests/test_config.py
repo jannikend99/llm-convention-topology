@@ -15,14 +15,22 @@ class ResolveModelTests(unittest.TestCase):
         self.assertEqual(spec.model_id, "meta-llama/llama-3.1-70b-instruct")
         self.assertEqual(spec.base_url, "https://openrouter.ai/api/v1")
         self.assertEqual(spec.api_key_env, "OPENROUTER_API_KEY")
-        self.assertEqual(spec.openrouter_provider, {"allow_fallbacks": False})
+        self.assertEqual(
+            spec.openrouter_provider,
+            {"allow_fallbacks": False, "only": ["deepinfra"]},
+        )
+        self.assertEqual(spec.max_tokens, 512)
 
     def test_qwen25_matches_registry_defaults(self):
         spec = resolve_model(self.config, "qwen25")
         self.assertEqual(spec.provider, "openrouter")
         self.assertEqual(spec.model_id, "qwen/qwen-2.5-72b-instruct")
         self.assertEqual(spec.api_key_env, "OPENROUTER_API_KEY")
-        self.assertEqual(spec.openrouter_provider, {"allow_fallbacks": False})
+        self.assertEqual(
+            spec.openrouter_provider,
+            {"allow_fallbacks": False, "only": ["deepinfra"]},
+        )
+        self.assertEqual(spec.max_tokens, 512)
 
     def test_gemini35_matches_registry_defaults(self):
         spec = resolve_model(self.config, "gemini35")

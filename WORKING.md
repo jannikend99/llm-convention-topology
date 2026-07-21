@@ -25,7 +25,7 @@ This document is the **single source of truth for thesis experiment code**. All 
 | --- | --- |
 | Stage | **one-shot offline build + code review remediation complete (2026-07-14)** — 43/46 IMPLEMENTATION_PLAN todos ✅; R1 (B1–B2, M1–M4, N1–N7) + R2 (R2-B1, R2-M1, R2-m2–m4) fixed; **150 tests**, 91% coverage |
 | Methods LaTeX | Locked (`chapters/03_Methods.tex` + Appendix `app:reproducibility`) |
-| Next gate | ⏸ **C-05** real API smoke (needs Llama/Qwen provider + Doug GPT-5.4/Claude 5.5 strings, §13 #1/#3) → **commit implementation** → real pilot week → G-03/G-04 repro freeze after data collection |
+| Next gate | ✅ C-05 done → **commit** → **Ashery mixing baseline** ([plan](docs/sessions/2026-07-20_ashery_baseline_plan.md)) → Centola-3 **Llama pilot** → **share with Doug** → iterate if needed → G-03/G-04 after data |
 | Pilot | Code ready; **real pilot not started** (mock batch verified) |
 | Main study | Code ready; **not started** |
 
@@ -77,7 +77,7 @@ This document is the **single source of truth for thesis experiment code**. All 
 | CM injection | `swap` mode; k ∈ {1,2,3,4,5,6} |
 | Flip (primary) | ≥95%/3N **and** modal label = `committed_to` |
 | Non-flip | Single category; right-censor at 1000 |
-| Run unit | 1 topology × 1 k × 1 seed × 1 model (sequential P1→P2) |
+| Run unit | Ashery split: emergence (W=10 organic) ‖ CM (W=2 prepared) |
 | API retries | 3× then `run_status = failed` |
 | Models (provisional) | Llama-3.1-70B (primary), Qwen2.5-72B, GPT-5.4, Claude 5.5 |
 
@@ -141,7 +141,11 @@ llm-convention-topology/
 └── outputs/                       # analysis exports (CSV/JSON), figures for Results
 ```
 
-**Run-ID convention:** `{model_shorthand}_{topology}_k{cm_k}_s{run_seed}` (e.g. `llama31_lattice_k3_s0042`). One run = one topology × one k × one seed × one model, sequential Phase 1→2 (M03 lock).
+**Run-ID convention:**
+- Emergence: `{model_shorthand}_{topology}_emerg_s{run_seed}` (e.g. `llama31_lattice_emerg_s0042`)
+- CM: `{model_shorthand}_{topology}_k{cm_k}_s{run_seed}` (e.g. `llama31_lattice_k3_s0042`)
+
+Programs are separate (Ashery split): organic Phase 1 vs prepared CM.
 
 **Replicator path:** `pip install -r requirements.txt -r requirements-dev.txt` → set provider env vars (§4) → `python run_pilot.py --model llama31` → `python live/monitor.py` + `streamlit run live/web.py` (pilot) → `python run_main.py --model llama31` → `python analyze.py --all --model llama31`.
 
@@ -183,9 +187,9 @@ Reference tree: `../ashery-ai-norms/` @ `e57aeef` (`publish` tag). Audited 2026-
 | `utils.py::has_tracker_converged` | `gate.py` | **adapt** ✅ | Done: threshold parameterized, thesis 0.95 (locked Methods deviation from repo 1.0); adds `GateResult`/eligibility/censoring semantics (new — Ashery has no eligibility concept) |
 | `utils.py::get_outcome`, `update_dict`, `update_tracker` | `tracker.py` | **adopt** ✅ | Verbatim semantics incl. success rule `outcome > 5` |
 | `utils.py::swap_committed` | `simulation.py::swap_committed` | **adopt** ✅ | `swap` mode locked; `add_committed` (inject) **skip** |
-| `utils.py::set_initial_state`, `get_prepared_population`, `test_if_initialisation_worked`, `get_random_prepared_player` | — | **skip** | Ashery CM runs start from *prepared* converged populations; thesis run unit is fully sequential Phase 1→2 per (topology, k, seed) — M03 lock. No synthetic initialization |
+| `utils.py::set_initial_state`, `get_prepared_population`, `test_if_initialisation_worked`, `get_random_prepared_player` | `prepared.py` | **adopt** ✅ | CM program: prepared consensus (Ashery `committed_runner`) |
 | `utils.py::load_mainframe`, `get_empty_population`, `get_player` | `persistence.py` | **reimplement** | Replace bare-`except` pickle resume with explicit run_id-addressed I/O + metadata sidecar (§6) |
-| `runner.py::bias_runner` / `committed_runner` | `run_pilot.py` / `run_main.py` | **reimplement** | Ashery iterates rewards × memory × options × runs × cm with shared baselines; thesis grid = topology × k × seed × model with per-run Phase 1 (§5). Keep resume-by-existing-file idea via `run_status` in sidecars |
+| `runner.py::bias_runner` / `committed_runner` | `run_pilot.py` / `run_main.py` (`--program`) | **reimplement** ✅ | Separate emergence vs CM grids |
 | `run_API.py::query`, `get_response` | `llm.py` | **reimplement** | Ashery: HF serverless, infinite retry loop, quote-split parsing. Thesis: OpenAI-compatible chat client, **3× retry then `run_status = failed`** (M03 lock), regex/JSON parse of `{'value': …}` against valid options; `get_meta_response` skip |
 | `run_local.py` | — | **skip** | Local 4-bit GPU inference not used; all four models via API (Methods lock). Revisit only if provider access fails |
 | `NG_module.py`, `run_NG.py` | — | **skip** | Minimal-theory Naming Game — paper figure S3 only; theory reference |
@@ -204,7 +208,7 @@ Reference tree: `../ashery-ai-norms/` @ `e57aeef` (`publish` tag). Audited 2026-
 | CM grid | `minority_size_set: [0]` | **k ∈ {1…6}**, factorial | M01 (locked 2026-07-10) |
 | Models | Llama-family, HF API | **4-model between-run factor**, OpenAI-compatible adapter | M02 (Llama-3.1-70B primary confirmatory) |
 | Flip taxonomy | none (post-hoc in notebook) | flip vs. **single non-flip/censored** category — **no `flip_resisted`** | M03/M04 R2 fix 2026-07-13 |
-| Run unit | CM runs reuse prepared baselines | sequential Phase 1→2 per (topology, k, seed) | M03 run-unit lock |
+| Run unit | Separate emergence ‖ CM programs (prepared CM) | Ashery split (2026-07-21) |
 | Retry policy | infinite retry w/ sleeps | **3× then `run_status = failed`** | M03 API error handling |
 | Phase 2 option shuffle | `committed()` shuffles options **once per interaction**, shared by both players, before `p1`/`p2` are chosen | **restored to upstream fidelity** (2026-07-14, code review M1): `make_interaction_step(..., shared_shuffle=True)` for Phase 2. Phase 1 keeps `population()`'s **per-agent independent shuffle** (`shared_shuffle=False`, default) | M1 fix, `simulation.py::make_interaction_step` |
 
@@ -274,7 +278,7 @@ Full design space per model: **topology ∈ {complete, random_regular, lattice} 
 
 ### Pilot grid (per model)
 
-12 attempted Phase 1 runs per topology = **36 runs/model**. Since each run carries a k, seeds are assigned k **cyclically** (seeds 1–12 → k = 1,2,3,4,5,6,1,2,…) so pilot runs double as first Phase 2 observations in every k cell (2 per topology × k cell). **Per-model strategy:** pilot executes on **Llama-3.1-70B first** (primary confirmatory model; gates eligibility triage + contingency decision); remaining three models run the same 36-run pilot after Llama results are sanity-checked and model IDs are pinned (§13 #1). Total pilot ceiling: 144 runs.
+12 attempted Phase 1 runs per topology = **36 runs/model**. Since each run carries a k, seeds are assigned k **cyclically** (seeds 1–12 → k = 1,2,3,4,5,6,1,2,…) so pilot runs double as first Phase 2 observations in every k cell (2 per topology × k cell). **Per-model strategy:** pilot executes on **Llama-3.1-70B first** (primary confirmatory model; gates eligibility triage + contingency decision). **Doug email 2026-07-20:** complete open-source design first, **share results**, iterate if needed, **then** expensive models — so Qwen/GPT/Claude pilots are **post-share**, not automatic after Llama sanity-check. Total ceiling still ≤144 if all four eventually pilot.
 
 ### Main study targets (per model — M01 locks)
 
@@ -513,12 +517,12 @@ Retired Ashery keys: `network.alpha/beta/erdos_p` (scale-free/ER), `params.initi
 
 | # | Item | Blocks | Owner | Status |
 | --- | --- | --- | --- | --- |
-| 1 | GPT-5.4 / Claude 5.5 pinned model strings + provider access | §4 registry entries; Phase C smoke for those two models (Llama/Qwen unaffected) | Doug / Jannik | open |
+| 1 | GPT-5.4 / Claude 5.5 pinned model strings + provider access | §4 registry entries; Phase C smoke for those two models (Llama/Qwen unaffected) | Doug / Jannik | **deferred 2026-07-20** — Doug email: open-source first; strings after result share ([Doug_Open_Questions.md](../../../01_Orga/Doug_Open_Questions.md)) |
 | 2 | **Bib mismatch found 2026-07-13:** `asheryAINormsZenodo2024` cited in Methods/Appendix | Appendix repro citations | Jannik | **closed 2026-07-14** — entry in `thesis-writing/literature.bib` (uncommitted) |
 | 3 | OpenRouter for Llama-3.1-70B + Qwen2.5-72B (`OPENROUTER_API_KEY`; pin `openrouter_provider.only` after C-05 smoke) | §4 registry; Phase C smoke | Jannik | **closed 2026-07-14** — see [`PROVIDER_ROUTING_PLAN.md`](PROVIDER_ROUTING_PLAN.md) |
-| 4 | API budget + per-provider rate limits (informs `--workers` default and main-study wall-clock) | Phase D/G scheduling only — not code structure | Jannik | open — estimate from pilot token counts (cost panel §9) |
-| 5 | **Structured Output vs. Ashery parsing** — API JSON-schema/constrained enum `{Q,M}` vs. in-prompt format + `parse_label()` (see Doug **D6**) | Pre-pilot protocol lock; `llm.py` / `OpenAICompatClient` if switching before main study | Doug / Jannik | open — **default: Ashery parse path** (A-05/C-02); optional sensitivity arm post-smoke |
-| 6 | **C-05 smoke + OpenRouter `only` pin** — after `OPENROUTER_API_KEY` / `GEMINI_API_KEY` in `.env`, run `run_one.py --smoke` for `llama31`, `qwen25`, `gemini35`; add discovered `openrouter_provider.only` slugs to `config.yaml` | Reproducible backing host for open-weight models | Jannik | open — commands in [`PROVIDER_ROUTING_PLAN.md`](PROVIDER_ROUTING_PLAN.md) §Post-implementation smoke |
+| 4 | API budget + per-provider rate limits (informs `--workers` default and main-study wall-clock) | Phase D/G scheduling only — not code structure | Jannik | **deferred** proprietary (Doug); estimate from Llama pilot tokens for open-source scheduling |
+| 5 | **Structured Output vs. Ashery parsing** — API JSON-schema/constrained enum `{Q,M}` vs. in-prompt format + `parse_label()` (see Doug **D6**) | Pre-pilot protocol lock; `llm.py` / `OpenAICompatClient` if switching before main study | Doug / Jannik | **deferred** — keep Ashery parse path unless pilot failure rates force revisit |
+| 6 | **C-05 smoke + OpenRouter `only` pin** — after `OPENROUTER_API_KEY` / `GEMINI_API_KEY` in `.env`, run `run_one.py --smoke` for `llama31`, `qwen25`, `gemini35`; add discovered `openrouter_provider.only` slugs to `config.yaml` | Reproducible backing host for open-weight models | Jannik | **closed 2026-07-20** — `llama31`+`qwen25` smoke 20/20 via DeepInfra; `only: ["deepinfra"]` + `max_tokens: 512` (200 truncated CoT before `value`); `gemini35` deferred |
 
 ---
 
@@ -541,3 +545,6 @@ Retired Ashery keys: `network.alpha/beta/erdos_p` (scale-free/ER), `params.initi
 | 2026-07-14 — Phase E complete (E-01…E-06) | `live/reader.py`, `live/cost.py`, `live/monitor.py`, `live/web.py` (Streamlit), `notebooks/pilot_dashboard.ipynb`; read-only verification + bug fixes (resume CM growth, reader model filter). Full suite 78 tests at E exit; later 150 after R1/R2. |
 | 2026-07-14 — Code review R1 remediation (FIX_PLAN.md) | All R1 findings fixed: **B1** H3a primary GAM-vs-linear LR; **B2** real `code_commit` via `orchestration.get_code_commit`; **M1** Phase 2 `shared_shuffle=True`; **M2** single `modal_lexicographic`; **M3** H3b full-grid confirmatory check; **M4** thin CLIs + `orchestration.py`/`analysis/dispatch.py`; **N1–N7** persistence writers, networks guard, glob-path pickle loading, dvs guards, dependency pins, typed exceptions. 146 tests green, 91% coverage. Reports: `CODE_REVIEW_REPORT.md`, `FIX_PLAN.md`. |
 | 2026-07-14 — Provider routing (OpenRouter + direct APIs) | `config.yaml` registry: Llama/Qwen → OpenRouter (`meta-llama/llama-3.1-70b-instruct`, `qwen/qwen-2.5-72b-instruct`); GPT/Claude → direct OpenAI/Anthropic; auxiliary `gemini35` → Google OpenAI-compat. `ModelSpec.provider` + `openrouter_provider`; `OpenAICompatClient` sends OR headers + `extra_body.provider`; `config_hash` includes routing pins. 153 tests green, 91% coverage. **C-05 follow-up:** pin `openrouter_provider.only` after paid smoke. See [`PROVIDER_ROUTING_PLAN.md`](PROVIDER_ROUTING_PLAN.md). |
+| 2026-07-20 — **C-05 complete** (OpenRouter smoke) | Paid smoke `llama31` + `qwen25` 20/20; pin `only: ["deepinfra"]`; `max_tokens` 200→512 (CoT truncation before `{'value':…}`). Full write-up: [`docs/sessions/2026-07-20_C05_openrouter_smoke.md`](docs/sessions/2026-07-20_C05_openrouter_smoke.md). `gemini35` deferred. Next: commit → real pilot. |
+| 2026-07-20 — OpenRouter response cache off | `OpenAICompatClient` sends `X-OpenRouter-Cache: false` on every OR call (overrides presets). Response caching would replay identical completions for identical agent histories → confound Naming Game. Prompt-prefix caching left alone. |
+| 2026-07-20 — Doug email (open-source first) | Design ready as-is; Llama pilot → share results → possible iteration → expensive models later. §13 #1/#4/#5 deferred. See [`01_Orga/Doug_Open_Questions.md`](../../../01_Orga/Doug_Open_Questions.md). |

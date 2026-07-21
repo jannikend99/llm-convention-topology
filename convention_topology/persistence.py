@@ -24,8 +24,19 @@ class PersistenceError(Exception):
     """Raised on missing/corrupt run artifacts or malformed metadata."""
 
 
-def build_run_id(model_shorthand: str, topology: str, cm_k: int, run_seed: int) -> str:
-    return f"{model_shorthand}_{topology}_k{cm_k}_s{run_seed:04d}"
+def build_run_id(
+    model_shorthand: str,
+    topology: str,
+    run_seed: int,
+    *,
+    program: str,
+    cm_k: int = 0,
+) -> str:
+    if program == "emergence":
+        return f"{model_shorthand}_{topology}_emerg_s{run_seed:04d}"
+    if program == "cm":
+        return f"{model_shorthand}_{topology}_k{cm_k}_s{run_seed:04d}"
+    raise ValueError(f"Unknown program {program!r}; expected 'emergence' or 'cm'")
 
 
 @dataclass(frozen=True)
@@ -79,8 +90,12 @@ def load_run_pickle(path: Path) -> dict[str, Any]:
 
 META_FIELDS = (
     "run_id",
+    "program",
+    "init_mode",
     "topology",
     "cm_k",
+    "options",
+    "incumbent_index",
     "model_id",
     "model_shorthand",
     "endpoint_base_url",

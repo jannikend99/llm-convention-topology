@@ -214,7 +214,7 @@ class OpenAICompatClientTests(unittest.TestCase):
             [{"role": "system", "content": "system text"}, {"role": "user", "content": "user text"}],
         )
         self.assertEqual(captured["temperature"], 0.5)
-        self.assertEqual(captured["max_tokens"], 200)
+        self.assertEqual(captured["max_tokens"], 512)
         self.assertEqual(response.text, "{'value': 'A'; 'reason': 'stub'}")
         self.assertEqual(response.usage, {"prompt_tokens": 12, "completion_tokens": 5})
         self.assertEqual(response.model_id, "test-model")
@@ -251,6 +251,7 @@ class OpenAICompatClientTests(unittest.TestCase):
             {
                 "HTTP-Referer": "https://github.com/jannikend99/llm-convention-topology",
                 "X-OpenRouter-Title": "TUM Master Thesis Naming Game",
+                "X-OpenRouter-Cache": "false",
             },
         )
         self.assertEqual(

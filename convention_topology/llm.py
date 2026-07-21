@@ -120,6 +120,11 @@ OPENAI_RETRY_EXCEPTIONS: tuple[type[Exception], ...] = (
 
 OPENROUTER_REFERER = "https://github.com/jannikend99/llm-convention-topology"
 OPENROUTER_TITLE = "TUM Master Thesis Naming Game"
+# Response caching (OR edge) returns verbatim prior completions for identical
+# bodies — fatal for Naming Game independence when two agents share a history.
+# Explicit false overrides account presets that set cache_enabled: true.
+# (Provider *prompt* caching is separate and only affects prefills/cost.)
+OPENROUTER_CACHE_HEADER = "false"
 
 
 class OpenAICompatClient:
@@ -138,7 +143,7 @@ class OpenAICompatClient:
         model_id: str,
         api_key_env: str,
         temperature: float = 0.5,
-        max_tokens: int = 200,
+        max_tokens: int = 512,
         timeout: float = 120.0,
         openrouter_provider: dict | None = None,
     ):
@@ -172,6 +177,7 @@ class OpenAICompatClient:
             kwargs["extra_headers"] = {
                 "HTTP-Referer": OPENROUTER_REFERER,
                 "X-OpenRouter-Title": OPENROUTER_TITLE,
+                "X-OpenRouter-Cache": OPENROUTER_CACHE_HEADER,
             }
         if self._openrouter_provider is not None:
             kwargs["extra_body"] = {"provider": self._openrouter_provider}

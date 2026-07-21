@@ -30,8 +30,9 @@ Extends [Ashery et al. (2025)](https://github.com/Ariel-Flint-Ashery/AI-norms) (
 | Topologies | Centola-3: **mixing** (`complete`), **random regular** deg 4, **1D ring lattice** deg 4 |
 | Lattice | Nearest + next-nearest on ring — Centola & Baronchelli (2015) |
 | Stability gate | **≥95%** dyadic success over trailing **3N = 72** interactions (`convergence_threshold: 0.95`) |
-| Phase 1 max | **5000** interactions (pilot observes censoring) |
-| Phase 2 horizon | **1000** post-gate interactions |
+| Phase 1 max | **5000** interactions (emergence program; pilot observes censoring) |
+| CM horizon | **1000** interactions on prepared populations |
+| Programs | **emergence** (W=10, organic) ‖ **cm** (W=2, prepared) — Ashery split |
 | CM injection | `swap` mode (Ashery) |
 | Flip success (analysis) | `flip = 1` iff ≥95%/3N success **and** modal label = `committed_to`; non-flip = single censored category at horizon 1000 (no separate `flip_resisted` code — see Methods/Theory Fix Pack R2, 2026-07-13) |
 
@@ -55,7 +56,7 @@ Methods sourcebook: `Thesis_Writing/development/03_Methods/WORKING.md` (in thesi
 | **Implementation plan** — [`WORKING.md`](WORKING.md) §1–§13 fully specified (milestone 0) | ✅ |
 | Mock LLM layer + prompting port (`convention_topology/llm.py`, `prompting.py`) — WORKING §3 Phase A | ✅ |
 | Full run unit: Phase 1→2, persistence, metadata sidecar (`run.py`, `persistence.py`) — Phase B | ✅ |
-| LLM API layer, OpenAI-compatible + 3× retry (`llm.py`, `run_one.py`) — Phase C (offline-tested; ⏸ real-API smoke C-05 pending keys/model strings) | ✅ |
+| LLM API layer, OpenAI-compatible + 3× retry (`llm.py`, `run_one.py`) — Phase C; **C-05 real-API smoke done 2026-07-20** ([session log](docs/sessions/2026-07-20_C05_openrouter_smoke.md); DeepInfra pin + `max_tokens` 512) | ✅ |
 | Pilot / main-study orchestration (`run_pilot.py`, `run_main.py`, dispatch logic in `convention_topology/orchestration.py`) — Phases D, G | ✅ |
 | Analysis scripts H1–H3b + H4, per model (`analysis/`, `analysis/dispatch.py`, `analyze.py`, `dvs.py`) — Phase F | ✅ |
 | **Code review remediation (2026-07-14)** — H3a GAM-vs-linear primary test, real `code_commit` sidecar, Phase 2 shared option shuffle, unified incumbent tie-break, H3b full-grid confirmatory check, thin-CLI extraction (`orchestration.py`/`analysis/dispatch.py`), persistence write/delete helpers, typed analysis exceptions — see [`CODE_REVIEW_REPORT.md`](CODE_REVIEW_REPORT.md) remediation table | ✅ |

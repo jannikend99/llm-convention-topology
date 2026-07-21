@@ -32,9 +32,16 @@ def _small_config():
 
 def _run_small_mocked_batch(n_cells: int, data_dir: Path, logs_dir: Path):
     config = _small_config()
+    config.params.total_interactions = 40
     model_spec = resolve_model(config, "mock")
     cells = [
-        GridCell("complete", i, ((i - 1) % 6) + 1, *derive_seeds(1, "complete", ((i - 1) % 6) + 1, i))
+        GridCell(
+            "cm",
+            "complete",
+            i,
+            ((i - 1) % 6) + 1,
+            *derive_seeds(1, "complete", ((i - 1) % 6) + 1, i),
+        )
         for i in range(1, n_cells + 1)
     ]
     run_batch(

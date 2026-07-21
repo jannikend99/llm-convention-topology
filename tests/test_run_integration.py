@@ -9,7 +9,6 @@ import unittest
 from pathlib import Path
 
 from convention_topology.config import config_hash
-from convention_topology.gate import evaluate_phase1_gate
 from convention_topology.llm import MockLLMClient, RetryPolicy, RunFailedError
 from convention_topology.persistence import (
     META_FIELDS,
@@ -26,15 +25,39 @@ from convention_topology.persistence import (
     write_meta,
 )
 from convention_topology.networks import get_interaction_network
-from convention_topology.run import RunConfig, execute_run
+from convention_topology.run import PROGRAM_CM, PROGRAM_EMERGENCE, RunConfig, execute_cm_run, execute_emergence_run
 from convention_topology.simulation import make_interaction_step, swap_committed
 from convention_topology.tracker import update_dict
 
 FAST_RETRY = RetryPolicy(sleep=lambda _: None)
 
+EMERGENCE_OPTIONS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
+CM_OPTIONS = ["Q", "M"]
 
-def _make_config(**overrides) -> RunConfig:
+
+def _make_emergence_config(**overrides) -> RunConfig:
     base = dict(
+        program=PROGRAM_EMERGENCE,
+        model_shorthand="mock",
+        model_id="mock",
+        endpoint_base_url="",
+        topology="complete",
+        cm_k=0,
+        graph_seed=0,
+        run_seed=0,
+        config_hash="deadbeefdeadbeef",
+        prompt_template_version="v1-ashery-chat-split",
+        code_commit="testcommit",
+        options=EMERGENCE_OPTIONS,
+        n=4,
+    )
+    base.update(overrides)
+    return RunConfig(**base)
+
+
+def _make_cm_config(**overrides) -> RunConfig:
+    base = dict(
+        program=PROGRAM_CM,
         model_shorthand="mock",
         model_id="mock",
         endpoint_base_url="",
@@ -45,7 +68,10 @@ def _make_config(**overrides) -> RunConfig:
         config_hash="deadbeefdeadbeef",
         prompt_template_version="v1-ashery-chat-split",
         code_commit="testcommit",
+        options=CM_OPTIONS,
+        incumbent_index=0,
         n=4,
+        phase2_horizon=100,
     )
     base.update(overrides)
     return RunConfig(**base)
@@ -156,14 +182,23 @@ class InteractionStepTests(unittest.TestCase):
 
 
 class RunIdAndPathTests(unittest.TestCase):
-    def test_build_run_id_format(self):
-        self.assertEqual(build_run_id("llama31", "lattice", 3, 42), "llama31_lattice_k3_s0042")
+    def test_build_run_id_emergence_format(self):
+        self.assertEqual(
+            build_run_id("llama31", "lattice", 42, program="emergence"),
+            "llama31_lattice_emerg_s0042",
+        )
+
+    def test_build_run_id_cm_format(self):
+        self.assertEqual(
+            build_run_id("llama31", "lattice", 42, program="cm", cm_k=3),
+            "llama31_lattice_k3_s0042",
+        )
 
     def test_run_paths_auto_create_dirs(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "data"
             logs_dir = Path(tmp) / "logs"
-            paths = run_paths(data_dir, logs_dir, "mock", "complete", "mock_complete_k1_s0000")
+            paths = run_paths(data_dir, logs_dir, "mock", "complete", "mock_complete_emerg_s0000")
             self.assertFalse(paths.pickle_path.parent.exists())
             paths.pickle_path.parent.mkdir(parents=True, exist_ok=True)
             paths.events_path.parent.mkdir(parents=True, exist_ok=True)
@@ -234,7 +269,7 @@ class AnalysisWriteHelpersTests(unittest.TestCase):
     def test_delete_run_artifacts_removes_meta_and_pickle(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir, logs_dir = Path(tmp) / "data", Path(tmp) / "logs"
-            paths = run_paths(data_dir, logs_dir, "mock", "complete", "mock_complete_k1_s0000")
+            paths = run_paths(data_dir, logs_dir, "mock", "complete", "mock_complete_emerg_s0000")
             paths.pickle_path.parent.mkdir(parents=True, exist_ok=True)
             paths.pickle_path.write_bytes(b"x")
             write_meta(paths.meta_path, {field: "x" for field in META_FIELDS})
@@ -283,32 +318,36 @@ class ConfigHashTests(unittest.TestCase):
         self.assertEqual(config_hash(cfg_a), config_hash(cfg_b))
 
 
-class ExecuteRunTests(unittest.TestCase):
-    def test_mixing_run_completes_under_ten_seconds_with_full_metadata(self):
+class EmergenceRunTests(unittest.TestCase):
+    def test_mixing_emergence_completes_under_ten_seconds_with_full_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir, logs_dir = Path(tmp) / "data", Path(tmp) / "logs"
-            cfg = _make_config()
+            cfg = _make_emergence_config()
             client = MockLLMClient(policy="imitate_modal", rng=random.Random(99), options=list(cfg.options))
             start = time.time()
-            paths = execute_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
+            paths = execute_emergence_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
             elapsed = time.time() - start
 
             self.assertLess(elapsed, 10.0)
             meta = read_meta(paths.meta_path)
             for field in META_FIELDS:
                 self.assertIn(field, meta)
+            self.assertEqual(meta["program"], "emergence")
+            self.assertEqual(meta["init_mode"], "organic")
             self.assertEqual(meta["run_status"], "completed")
+            self.assertEqual(meta["cm_k"], 0)
+            self.assertIsNone(meta["committed_to"])
             self.assertIsNotNone(meta["t_gate"])
-            self.assertIsNotNone(meta["config_hash"])
+            self.assertIsNotNone(meta["incumbent_label"])
             self.assertTrue(paths.pickle_path.exists())
             self.assertTrue(paths.events_path.exists())
 
     def test_censored_path_with_random_policy_and_reduced_cap(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir, logs_dir = Path(tmp) / "data", Path(tmp) / "logs"
-            cfg = _make_config(max_phase1_interactions=30, checkpoint_every=10)
+            cfg = _make_emergence_config(max_phase1_interactions=30, checkpoint_every=10)
             client = MockLLMClient(policy="random", rng=random.Random(7), options=list(cfg.options))
-            paths = execute_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
+            paths = execute_emergence_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
             meta = read_meta(paths.meta_path)
             self.assertEqual(meta["run_status"], "censored")
             self.assertEqual(meta["eligibility"], 0)
@@ -317,15 +356,17 @@ class ExecuteRunTests(unittest.TestCase):
     def test_failed_path_after_three_retries_on_malformed_output(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir, logs_dir = Path(tmp) / "data", Path(tmp) / "logs"
-            cfg = _make_config()
-            # 'always' policy emits a label outside `options` -> parse_label
-            # raises ParseError every attempt -> RetryPolicy exhausts -> RunFailedError.
+            cfg = _make_emergence_config()
             client = MockLLMClient(policy="always", rng=random.Random(0), options=list(cfg.options), always_label="Z")
             with self.assertRaises(RunFailedError):
-                execute_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
-            paths = run_paths(data_dir, logs_dir, cfg.model_shorthand, cfg.topology, build_run_id(
-                cfg.model_shorthand, cfg.topology, cfg.cm_k, cfg.run_seed
-            ))
+                execute_emergence_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
+            paths = run_paths(
+                data_dir,
+                logs_dir,
+                cfg.model_shorthand,
+                cfg.topology,
+                build_run_id(cfg.model_shorthand, cfg.topology, cfg.run_seed, program="emergence"),
+            )
             meta = read_meta(paths.meta_path)
             self.assertEqual(meta["run_status"], "failed")
             self.assertIsNotNone(meta["finished_at"])
@@ -333,16 +374,14 @@ class ExecuteRunTests(unittest.TestCase):
     def test_resume_from_checkpoint_does_not_replay_completed_phase1(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir, logs_dir = Path(tmp) / "data", Path(tmp) / "logs"
-            cfg = _make_config()
+            cfg = _make_emergence_config()
             client = MockLLMClient(policy="imitate_modal", rng=random.Random(99), options=list(cfg.options))
-            paths = execute_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
+            paths = execute_emergence_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
             completed_payload = load_run_pickle(paths.pickle_path)
             completed_meta = read_meta(paths.meta_path)
             original_total = len(completed_payload["tracker"]["outcome"])
+            original_calls = completed_meta["n_api_calls"]
 
-            # Simulate a checkpoint written mid-run: the persisted tracker
-            # already satisfies the Phase 1 gate, but run_status is still
-            # `in_progress` (as if the finalize step hadn't landed yet).
             save_run_pickle(
                 paths.pickle_path,
                 completed_payload["simulation"],
@@ -355,32 +394,59 @@ class ExecuteRunTests(unittest.TestCase):
             write_meta(paths.meta_path, resume_meta)
 
             resume_client = MockLLMClient(policy="imitate_modal", rng=random.Random(99), options=list(cfg.options))
-            resumed_paths = execute_run(
+            resumed_paths = execute_emergence_run(
                 cfg, resume_client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY
             )
             resumed_meta = read_meta(resumed_paths.meta_path)
             resumed_payload = load_run_pickle(resumed_paths.pickle_path)
 
             self.assertEqual(resumed_meta["run_status"], "completed")
-            # Only Phase 2 (+ its horizon) should have run again -- resuming
-            # from an already-gate-passed tracker must not replay Phase 1's
-            # ~180 interactions worth of client calls.
-            self.assertLess(resumed_meta["n_api_calls"], 2 * cfg.phase2_horizon + 40)
-            self.assertEqual(
-                len(resumed_payload["tracker"]["outcome"]),
-                original_total + cfg.phase2_horizon,
-            )
+            self.assertEqual(len(resumed_payload["tracker"]["outcome"]), original_total)
+            self.assertLessEqual(resumed_meta["n_api_calls"], original_calls + 5)
 
-    def test_resume_after_phase2_start_does_not_re_swap_committed(self):
-        # Regression: resuming a checkpoint taken *after* Phase 2 already
-        # picked its k committed agents used to re-run swap_committed with a
-        # freshly-seeded rng, tagging additional agents on top of the
-        # original k -- corrupting the committed-minority size.
+    def test_one_emergence_run_per_topology(self):
+        for topology in ("complete", "random_regular", "lattice"):
+            with self.subTest(topology=topology):
+                with tempfile.TemporaryDirectory() as tmp:
+                    data_dir, logs_dir = Path(tmp) / "data", Path(tmp) / "logs"
+                    cfg = _make_emergence_config(topology=topology, n=8)
+                    client = MockLLMClient(policy="imitate_modal", rng=random.Random(3), options=list(cfg.options))
+                    paths = execute_emergence_run(
+                        cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY
+                    )
+                    meta = read_meta(paths.meta_path)
+                    self.assertIn(meta["run_status"], ("completed", "censored"))
+                    self.assertEqual(meta["topology"], topology)
+                    self.assertEqual(meta["program"], "emergence")
+
+
+class CMRunTests(unittest.TestCase):
+    def test_prepared_cm_completes_with_fixed_horizon(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir, logs_dir = Path(tmp) / "data", Path(tmp) / "logs"
-            cfg = _make_config(cm_k=2, n=8)
+            cfg = _make_cm_config(phase2_horizon=80)
             client = MockLLMClient(policy="imitate_modal", rng=random.Random(99), options=list(cfg.options))
-            paths = execute_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
+            paths = execute_cm_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
+            meta = read_meta(paths.meta_path)
+            payload = load_run_pickle(paths.pickle_path)
+
+            self.assertEqual(meta["program"], "cm")
+            self.assertEqual(meta["init_mode"], "prepared")
+            self.assertEqual(meta["run_status"], "completed")
+            self.assertEqual(meta["t_gate"], 0)
+            self.assertEqual(meta["incumbent_label"], "Q")
+            self.assertEqual(meta["committed_to"], "M")
+            self.assertEqual(meta["eligibility"], 1)
+            self.assertEqual(len(payload["tracker"]["outcome"]), 80)
+            committed = sum(1 for p in payload["simulation"].values() if p.get("committed_tag"))
+            self.assertEqual(committed, 1)
+
+    def test_resume_after_cm_start_does_not_re_swap_committed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir, logs_dir = Path(tmp) / "data", Path(tmp) / "logs"
+            cfg = _make_cm_config(cm_k=2, n=8, phase2_horizon=60)
+            client = MockLLMClient(policy="imitate_modal", rng=random.Random(99), options=list(cfg.options))
+            paths = execute_cm_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
             payload = load_run_pickle(paths.pickle_path)
             committed_before = sum(1 for p in payload["simulation"].values() if p.get("committed_tag"))
             self.assertEqual(committed_before, 2)
@@ -389,50 +455,30 @@ class ExecuteRunTests(unittest.TestCase):
             meta["run_status"] = "in_progress"
             meta["finished_at"] = None
             write_meta(paths.meta_path, meta)
-            save_run_pickle(paths.pickle_path, payload["simulation"], payload["tracker"], payload["convergence"])
+            # Truncate tracker to mid-horizon to force remaining Phase 2 work.
+            mid = {k: v[:30] for k, v in payload["tracker"].items()}
+            save_run_pickle(paths.pickle_path, payload["simulation"], mid, payload["convergence"])
 
             resume_client = MockLLMClient(policy="imitate_modal", rng=random.Random(99), options=list(cfg.options))
-            resumed_paths = execute_run(
+            resumed_paths = execute_cm_run(
                 cfg, resume_client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY
             )
             resumed_payload = load_run_pickle(resumed_paths.pickle_path)
             committed_after = sum(1 for p in resumed_payload["simulation"].values() if p.get("committed_tag"))
             self.assertEqual(committed_after, 2)
+            self.assertEqual(len(resumed_payload["tracker"]["outcome"]), 60)
 
-    def test_sidecar_incumbent_label_matches_dvs_recomputation(self):
-        # M2: the real run's meta.json incumbent_label (production path,
-        # tracker.modal_label_in_window) must agree with dvs.incumbent_label's
-        # independent post-hoc recomputation over the same tracker/t_gate --
-        # both now route through the single tracker.modal_lexicographic tie-break.
-        from convention_topology.dvs import incumbent_label as dvs_incumbent_label
-
+    def test_sidecar_incumbent_matches_prepared_construction(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir, logs_dir = Path(tmp) / "data", Path(tmp) / "logs"
-            cfg = _make_config()
+            cfg = _make_cm_config(phase2_horizon=40)
             client = MockLLMClient(policy="imitate_modal", rng=random.Random(99), options=list(cfg.options))
-            paths = execute_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
+            paths = execute_cm_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
             meta = read_meta(paths.meta_path)
-            payload = load_run_pickle(paths.pickle_path)
-
-            self.assertEqual(meta["run_status"], "completed")
-            self.assertIsNotNone(meta["t_gate"])
-            # Production's window is 3*n (run.py::convergence_time); pass the
-            # same window explicitly so this compares tie-break behavior, not
-            # an incidental window-size mismatch against dvs's 72-default.
-            recomputed = dvs_incumbent_label(payload["tracker"], t_gate=meta["t_gate"], window=3 * cfg.n)
-            self.assertEqual(meta["incumbent_label"], recomputed)
-
-    def test_one_run_per_topology(self):
-        for topology in ("complete", "random_regular", "lattice"):
-            with self.subTest(topology=topology):
-                with tempfile.TemporaryDirectory() as tmp:
-                    data_dir, logs_dir = Path(tmp) / "data", Path(tmp) / "logs"
-                    cfg = _make_config(topology=topology, n=8)
-                    client = MockLLMClient(policy="imitate_modal", rng=random.Random(3), options=list(cfg.options))
-                    paths = execute_run(cfg, client, data_dir=data_dir, logs_dir=logs_dir, retry_policy=FAST_RETRY)
-                    meta = read_meta(paths.meta_path)
-                    self.assertIn(meta["run_status"], ("completed", "censored"))
-                    self.assertEqual(meta["topology"], topology)
+            self.assertEqual(meta["incumbent_label"], "Q")
+            self.assertEqual(meta["committed_to"], "M")
+            self.assertEqual(meta["options"], ["Q", "M"])
+            self.assertEqual(meta["incumbent_index"], 0)
 
 
 if __name__ == "__main__":

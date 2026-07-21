@@ -25,7 +25,8 @@ from convention_topology.persistence import write_analysis_csv, write_analysis_j
 
 
 def run_h1(runs_df, outputs_dir: Path) -> dict[str, Any]:
-    mixing = runs_df[(runs_df["topology"] == "complete") & runs_df["dominant_share"].notna()]
+    emergence = runs_df[runs_df["program"] == "emergence"]
+    mixing = emergence[(emergence["topology"] == "complete") & emergence["dominant_share"].notna()]
     result = h1_analysis(mixing["dominant_share"].tolist())
     write_analysis_json(outputs_dir / "h1.json", result)
     write_analysis_csv(outputs_dir / "h1.csv", mixing)
@@ -33,8 +34,10 @@ def run_h1(runs_df, outputs_dir: Path) -> dict[str, Any]:
 
 
 def run_h2(runs_df, outputs_dir: Path) -> dict[str, Any]:
+    emergence = runs_df[runs_df["program"] == "emergence"]
+
     def _subset(topology: str) -> pd.DataFrame:
-        return runs_df[(runs_df["topology"] == topology) & runs_df["dominant_share"].notna()]
+        return emergence[(emergence["topology"] == topology) & emergence["dominant_share"].notna()]
 
     mixing, lattice, random_regular = _subset("complete"), _subset("lattice"), _subset("random_regular")
     result = h2_analysis(
@@ -47,7 +50,8 @@ def run_h2(runs_df, outputs_dir: Path) -> dict[str, Any]:
 
 
 def run_h3a(runs_df, outputs_dir: Path, sensitivity_50: bool) -> dict[str, Any]:
-    mixing = runs_df[(runs_df["topology"] == "complete") & runs_df["flip"].notna()]
+    cm = runs_df[runs_df["program"] == "cm"]
+    mixing = cm[(cm["topology"] == "complete") & cm["flip"].notna()]
     result = h3a_analysis(mixing["cm_k"].tolist(), mixing["flip"].tolist())
     write_analysis_json(outputs_dir / "h3a.json", result)
     write_analysis_csv(outputs_dir / "h3a.csv", mixing)
@@ -59,7 +63,8 @@ def run_h3a(runs_df, outputs_dir: Path, sensitivity_50: bool) -> dict[str, Any]:
 
 
 def run_h3b(runs_df, outputs_dir: Path) -> dict[str, Any]:
-    eligible = runs_df[runs_df["flip"].notna()]
+    cm = runs_df[runs_df["program"] == "cm"]
+    eligible = cm[cm["flip"].notna()]
     result = h3b_analysis(eligible)
     write_analysis_json(outputs_dir / "h3b.json", result)
     write_analysis_csv(outputs_dir / "h3b.csv", eligible)
@@ -67,7 +72,8 @@ def run_h3b(runs_df, outputs_dir: Path) -> dict[str, Any]:
 
 
 def run_h4(runs_df, outputs_dir: Path) -> dict[str, Any]:
-    mixing = runs_df[(runs_df["topology"] == "complete") & runs_df["incumbent_label"].notna()]
+    emergence = runs_df[runs_df["program"] == "emergence"]
+    mixing = emergence[(emergence["topology"] == "complete") & emergence["incumbent_label"].notna()]
     result = h4_analysis(mixing["incumbent_label"].tolist())
     write_analysis_json(outputs_dir / "h4.json", result)
     write_analysis_csv(outputs_dir / "h4.csv", mixing)

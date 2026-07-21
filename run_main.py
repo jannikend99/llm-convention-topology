@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""CLI: main-study batch runner -- eligible-count targeting per cell (§5, M01 locks).
+"""CLI: main-study batch runner — target counts per program cell.
 
-Thin dispatch (§0 principle 6): argument parsing + one call into
-`convention_topology.orchestration.run_main_study`. Per (topology x cm_k)
-cell, keeps launching seeds until the eligible (gate-passed) count reaches
-the target or the attempted cap (default 3x target) is hit -- guards
-runaway censoring cells. Same resume/`--retry-failed` semantics as
-`run_pilot.py`; targeting counts **eligible** runs, not attempted.
+`--program emergence`: gate-eligible targets per topology.
+`--program cm`: completed-run targets per (topology × k).
 """
 
 from __future__ import annotations
@@ -18,10 +14,12 @@ from dotenv import load_dotenv
 
 from convention_topology.config import load_config, resolve_model
 from convention_topology.orchestration import TOPOLOGIES, cell_targets, run_main_study
+from convention_topology.run import PROGRAM_CM, PROGRAM_EMERGENCE
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Main-study batch: eligible-count targeting per (topology, k) cell.")
+    parser = argparse.ArgumentParser(description="Main-study batch: target-count targeting per program cell.")
+    parser.add_argument("--program", required=True, choices=[PROGRAM_EMERGENCE, PROGRAM_CM])
     parser.add_argument("--model", required=True)
     parser.add_argument("--topology", choices=TOPOLOGIES, default=None, help="Restrict to one topology.")
     parser.add_argument("--dry-run", action="store_true")
@@ -35,13 +33,13 @@ def main(argv: list[str] | None = None) -> int:
     model_spec = resolve_model(config, args.model)
 
     if args.dry_run:
-        targets = cell_targets(config)
+        targets = cell_targets(config, args.program)
         if args.topology:
             targets = [row for row in targets if row["topology"] == args.topology]
         for row in targets:
             print(
-                f"topology={row['topology']} k={row['cm_k']} "
-                f"eligible_target=[{row['eligible_target_min']}-{row['eligible_target_max']}] "
+                f"program={row['program']} topology={row['topology']} k={row['cm_k']} "
+                f"target=[{row['target_min']}-{row['target_max']}] "
                 f"attempted_cap={row['attempted_cap']}"
             )
         print(f"total_cells={len(targets)}")
@@ -50,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     results = run_main_study(
         config,
         model_spec,
+        program=args.program,
         data_dir=Path(config.paths.data),
         logs_dir=Path(config.paths.logs),
         mock_policy=args.mock_policy,
@@ -58,8 +57,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     for result in results:
         print(
-            f"topology={result['topology']} k={result['cm_k']} "
-            f"eligible={result['eligible']}/{result['target']} attempted={result['attempted']}/{result['attempted_cap']}"
+            f"program={result['program']} topology={result['topology']} k={result['cm_k']} "
+            f"eligible={result['eligible']}/{result['target']} "
+            f"attempted={result['attempted']}/{result['attempted_cap']}"
         )
     return 0
 
