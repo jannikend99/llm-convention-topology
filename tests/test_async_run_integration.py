@@ -8,7 +8,11 @@ from pathlib import Path
 
 from convention_topology.async_llm import AsyncClientAdapter, AsyncRetryPolicy
 from convention_topology.async_orchestration import run_batch_async
-from convention_topology.async_run import execute_cm_run_async, execute_emergence_run_async
+from convention_topology.async_run import (
+    execute_cm_run_async,
+    execute_emergence_run_async,
+    execute_run_async,
+)
 from convention_topology.async_simulation import make_async_interaction_step
 from convention_topology.config import derive_seeds, load_config, resolve_model
 from convention_topology.llm import MockLLMClient, RetryPolicy
@@ -156,6 +160,98 @@ class AsyncInteractionStepTests(unittest.TestCase):
         asyncio.run(go())
         self.assertEqual(mock.call_count, 0)
         self.assertEqual(len(tracker["outcome"]), 20)
+
+
+class AsyncRunDispatchTests(unittest.TestCase):
+    def test_execute_run_async_rejects_unknown_program(self):
+        cfg = _emergence_config(program="unknown")
+        client = AsyncClientAdapter(
+            MockLLMClient(policy="always", rng=random.Random(0), options=EMERGENCE_OPTIONS, always_label="A")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                asyncio.run(
+                    execute_run_async(
+                        cfg, client, data_dir=Path(tmp) / "data", logs_dir=Path(tmp) / "logs",
+                        retry_policy=ASYNC_FAST_RETRY,
+                    )
+                )
+
+    def test_emergence_rejects_wrong_program(self):
+        cfg = _cm_config()
+        client = AsyncClientAdapter(
+            MockLLMClient(policy="always", rng=random.Random(0), options=CM_OPTIONS, always_label="Q")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                asyncio.run(
+                    execute_emergence_run_async(
+                        cfg, client, data_dir=Path(tmp) / "data", logs_dir=Path(tmp) / "logs",
+                        retry_policy=ASYNC_FAST_RETRY,
+                    )
+                )
+
+    def test_cm_rejects_invalid_k(self):
+        cfg = _cm_config(cm_k=0)
+        client = AsyncClientAdapter(
+            MockLLMClient(policy="always", rng=random.Random(0), options=CM_OPTIONS, always_label="Q")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                asyncio.run(
+                    execute_cm_run_async(
+                        cfg, client, data_dir=Path(tmp) / "data", logs_dir=Path(tmp) / "logs",
+                        retry_policy=ASYNC_FAST_RETRY,
+                    )
+                )
+
+    def test_emergence_resumes_in_progress_checkpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir, logs_dir = Path(tmp) / "data", Path(tmp) / "logs"
+            cfg = _emergence_config(run_seed=11, max_phase1_interactions=500)
+            client = AsyncClientAdapter(
+                MockLLMClient(policy="imitate_modal", rng=random.Random(99), options=list(cfg.options))
+            )
+            paths = asyncio.run(
+                execute_emergence_run_async(
+                    cfg, client, data_dir=data_dir, logs_dir=logs_dir,
+                    retry_policy=ASYNC_FAST_RETRY, console_progress=False,
+                )
+            )
+            meta = read_meta(paths.meta_path)
+            self.assertEqual(meta["run_status"], "completed")
+            n_calls_first = meta["n_api_calls"]
+
+            asyncio.run(
+                execute_emergence_run_async(
+                    cfg, client, data_dir=data_dir, logs_dir=logs_dir,
+                    retry_policy=ASYNC_FAST_RETRY, console_progress=False,
+                )
+            )
+            meta_after = read_meta(paths.meta_path)
+            self.assertEqual(meta_after["n_api_calls"], n_calls_first)
+
+    def test_cm_resumes_completed_without_rerunning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir, logs_dir = Path(tmp) / "data", Path(tmp) / "logs"
+            cfg = _cm_config(run_seed=3, phase2_horizon=60)
+            client = AsyncClientAdapter(
+                MockLLMClient(policy="imitate_modal", rng=random.Random(3), options=list(cfg.options))
+            )
+            paths = asyncio.run(
+                execute_cm_run_async(
+                    cfg, client, data_dir=data_dir, logs_dir=logs_dir,
+                    retry_policy=ASYNC_FAST_RETRY, console_progress=False,
+                )
+            )
+            first_calls = read_meta(paths.meta_path)["n_api_calls"]
+            asyncio.run(
+                execute_cm_run_async(
+                    cfg, client, data_dir=data_dir, logs_dir=logs_dir,
+                    retry_policy=ASYNC_FAST_RETRY, console_progress=False,
+                )
+            )
+            self.assertEqual(read_meta(paths.meta_path)["n_api_calls"], first_calls)
 
 
 class AsyncBatchEquivalenceTests(unittest.TestCase):
