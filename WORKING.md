@@ -2,7 +2,7 @@
 
 **Repository:** [github.com/jannikend99/llm-convention-topology](https://github.com/jannikend99/llm-convention-topology)  
 **Meta-repo path:** `Master Thesis/02_Topic/Experiment_Code/llm-convention-topology/`  
-**Last updated:** 2026-07-14  
+**Last updated:** 2026-07-24 (orchestration = TODO only — code revert)  
 **Language:** English (code + docs)
 
 ---
@@ -23,11 +23,44 @@ This document is the **single source of truth for thesis experiment code**. All 
 
 | Field | Value |
 | --- | --- |
-| Stage | **one-shot offline build + code review remediation complete (2026-07-14)** — 43/46 IMPLEMENTATION_PLAN todos ✅; R1 (B1–B2, M1–M4, N1–N7) + R2 (R2-B1, R2-M1, R2-m2–m4) fixed; **150 tests**, 91% coverage |
-| Methods LaTeX | Locked (`chapters/03_Methods.tex` + Appendix `app:reproducibility`) |
-| Next gate | ✅ C-05 done → **commit** → **Ashery mixing baseline** ([plan](docs/sessions/2026-07-20_ashery_baseline_plan.md)) → Centola-3 **Llama pilot** → **share with Doug** → iterate if needed → G-03/G-04 after data |
-| Pilot | Code ready; **real pilot not started** (mock batch verified) |
+| Stage | Offline build ✅ · C-05 ✅ · Ashery-split code ✅ · **pre-pilot proofs complete** (emergence 8/8 · CM smoke · k=6 flip) |
+| Methods LaTeX | Locked prose still sequential in places — **sync after pilot** (Ashery split already in code) |
+| Next gate | **Orchestration refactor (A1/A3/A6)** → **Centola-3 Llama pilot** → share with Doug → G-03/G-04 after data |
+| Pilot | Pre-pilot proofs done; **Centola-3 pilot not started** |
 | Main study | Code ready; **not started** |
+
+### Next steps (live checklist)
+
+| # | Step | Status | Notes |
+| --- | --- | --- | --- |
+| 1 | Mixing emergence proof (Ashery W=10, 8 seeds) | ✅ **done 2026-07-23** | [`docs/sessions/2026-07-21_together_ashery_proof.md`](docs/sessions/2026-07-21_together_ashery_proof.md) |
+| 2 | CM smoke + k=6 flip demo | ✅ **done 2026-07-23** | log §7.3–7.4 |
+| **2c** | **Orchestration refactor (A1/A3/A6)** — parallel p1+p2, API gate, run-level pool | ⬜ **before pilot** | See § Performance below · meta `TODO.md` **#0** / **#16b** |
+| 3 | Centola-3 **Llama pilot** | ⬜ after **2c** | `--program emergence` then `--program cm`; 36+36 runs |
+| 4 | Commit + share package with Doug | ⬜ after #3 | |
+| 5 | Theory/Methods LaTeX sync (split protocol) | ⬜ after pilot narrative stable | TODO **D4** |
+
+### Scaling & infra (backlog — TODO #16)
+
+| Sub | What | Trigger | Status |
+| --- | --- | --- | --- |
+| **16b** | Orchestration A1/A3/A6 | **Before Centola-3 pilot** | ⬜ open |
+| 16a | Stanford HPC (Doug D7) | After pilot + Doug share | ⬜ open |
+| 16c | API providers + free credits | After pilot cost estimate | ⬜ open |
+
+### Performance / async optimization (TODO — not implemented)
+
+**Context:** Wall-clock dominated by sequential LLM I/O. Current code: across-run `--workers` on pilot grid only; main study parallelizes **cells** not all seeds; p1+p2 **sequential** per interaction.
+
+| ID | Opportunity | Where | Notes |
+| --- | --- | --- | --- |
+| **A1** | Parallel p1+p2 per interaction | `simulation.py` | ~2× per interaction when both need LLM |
+| **A3** | Global API concurrency semaphore | `llm.py` / `orchestration.py` | Fewer 503s with `--workers` > 1 |
+| **A6** | Run-level pool (pilot + main) | `orchestration.py` | Global queue; not cell-sequential seeds |
+| A2 | Unified async client | `run.py` / `llm.py` | Optional; threads OK for v1 |
+| A5 | CM early-stop after flip | — | **Rejected** (protocol deviation) |
+
+**Gate:** implement **A1 + A3 + A6 before Centola-3 pilot** (see checklist **#2c**).
 
 ### Sign-off (implementation plan)
 
