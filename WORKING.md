@@ -25,7 +25,7 @@ This document is the **single source of truth for thesis experiment code**. All 
 | --- | --- |
 | Stage | Offline build ✅ · C-05 ✅ · Ashery-split code ✅ · **async engine ✅** (§15) · **pre-pilot proofs complete** (emergence 8/8 · CM smoke · k=6 flip) |
 | Methods LaTeX | Locked prose still sequential in places — **sync after pilot** (Ashery split already in code) |
-| Next gate | **Step ① baseline + rate-limit ceiling measurement** → **Centola-3 Llama pilot** (async default) → share with Doug → G-03/G-04 after data |
+| Next gate | **Step ①** → **provider setup (#0b)** → **Centola-3 Llama pilot** (async default) → share with Doug → G-03/G-04 after data |
 | Pilot | Pre-pilot proofs done; async default path ready; **Centola-3 pilot not started** |
 | Main study | Code ready; **not started** |
 
@@ -37,7 +37,8 @@ This document is the **single source of truth for thesis experiment code**. All 
 | 2 | CM smoke + k=6 flip demo | ✅ **done 2026-07-23** | log §7.3–7.4 |
 | **2c** | **Async engine (A1/A2/A3/A6 + ⑤ pool scaffold + ⑥ adaptive limiter)** — parallel p1+p2, global API gate, run-level pool | ✅ **done 2026-07-24** | Async is now the **default** engine (`--engine async`). See §15 · meta `TODO.md` **#0** / **#16b** |
 | **2d** | **Step ① — measure baseline + real 429 ceiling** on a Llama pilot slice | ⬜ **before full pilot** | Run `--api-concurrency` sweep, record where 429s start → set as the production ceiling (§15) |
-| 3 | Centola-3 **Llama pilot** | ⬜ after **2d** | `--program emergence` then `--program cm`; 36+36 runs |
+| **2e** | **Provider setup finalization** — free-credit hosts, same model weights, multi-endpoint pool | ⬜ after **2d**, before pilot | Active **#0b** · `ProviderPool` N>1 · meta `TODO.md` **#16c** |
+| 3 | Centola-3 **Llama pilot** | ⬜ after **2e** | `--program emergence` then `--program cm`; 36+36 runs |
 | 4 | Commit + share package with Doug | ⬜ after #3 | |
 | 5 | Theory/Methods LaTeX sync (split protocol) | ⬜ after pilot narrative stable | TODO **D4** |
 
@@ -47,7 +48,7 @@ This document is the **single source of truth for thesis experiment code**. All 
 | --- | --- | --- | --- |
 | **16b** | Orchestration A1/A3/A6 (async engine) | **Before Centola-3 pilot** | ✅ done 2026-07-24 (§15) |
 | 16a | Stanford HPC (Doug D7) | After pilot + Doug share | ⬜ open |
-| 16c | API providers + free credits | After pilot cost estimate | ⬜ open |
+| 16c | API providers + free credits (same model weights) | **Before pilot** (after 2d) | ⬜ open — see Active **#0b** |
 
 ### Performance / async optimization (✅ implemented — async engine, §15)
 
