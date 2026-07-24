@@ -31,8 +31,8 @@ models:                             # registry (§4); active model chosen by CLI
     base_url: https://openrouter.ai/api/v1
     api_key_env: OPENROUTER_API_KEY
     temperature: 0.5
-    # 512: Ashery chat prompt asks for CoT then {'value':...}; 200 truncates before value (C-05)
-    max_tokens: 512
+    # 2000: CoT + {'value':...}; 512 truncates before value (C-05; proof track D6)
+    max_tokens: 2000
     openrouter_provider:
       allow_fallbacks: false
       only: ["deepinfra"]  # pinned C-05 2026-07-20
@@ -67,6 +67,14 @@ models:                             # registry (§4); active model chosen by CLI
     api_key_env: GEMINI_API_KEY
     temperature: 0.5
     max_tokens: 512
+  mistralnemo:
+    provider: deepinfra
+    model_id: mistralai/Mistral-Nemo-Instruct-2407
+    base_url: https://api.deepinfra.com/v1/openai
+    api_key_env: DEEPINFRA_API_KEY
+    temperature: 0.5
+    # Match llama31 decoding headroom (proof track D6; same CoT+value prompt)
+    max_tokens: 2000
   mock:
     provider: mock
     model_id: mock

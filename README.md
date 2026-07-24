@@ -56,7 +56,7 @@ Methods sourcebook: `Thesis_Writing/development/03_Methods/WORKING.md` (in thesi
 | **Implementation plan** — [`WORKING.md`](WORKING.md) §1–§13 fully specified (milestone 0) | ✅ |
 | Mock LLM layer + prompting port (`convention_topology/llm.py`, `prompting.py`) — WORKING §3 Phase A | ✅ |
 | Full run unit: Phase 1→2, persistence, metadata sidecar (`run.py`, `persistence.py`) — Phase B | ✅ |
-| LLM API layer, OpenAI-compatible + 3× retry (`llm.py`, `run_one.py`) — Phase C; **C-05 real-API smoke done 2026-07-20** ([session log](docs/sessions/2026-07-20_C05_openrouter_smoke.md); DeepInfra pin + `max_tokens` 512) | ✅ |
+| LLM API layer, OpenAI-compatible + 3× retry (`llm.py`, `run_one.py`) — Phase C; **C-05 smoke ✅**; **`max_tokens: 2000`** on `llama31`/`mistralnemo` (2026-07-24) | ✅ |
 | Pilot / main-study orchestration (`run_pilot.py`, `run_main.py`, dispatch logic in `convention_topology/orchestration.py`) — Phases D, G | ✅ |
 | Analysis scripts H1–H3b + H4, per model (`analysis/`, `analysis/dispatch.py`, `analyze.py`, `dvs.py`) — Phase F | ✅ |
 | **Code review remediation (2026-07-14)** — H3a GAM-vs-linear primary test, real `code_commit` sidecar, Phase 2 shared option shuffle, unified incumbent tie-break, H3b full-grid confirmatory check, thin-CLI extraction (`orchestration.py`/`analysis/dispatch.py`), persistence write/delete helpers, typed analysis exceptions (R1/R2 review reports removed in the 2026-07-24 cleanup; summary retained in `WORKING.md` §14) | ✅ |
@@ -103,6 +103,31 @@ git clone git@github.com:jannikend99/llm-convention-topology.git
 
 ## Status
 
-| **Provider routing (OpenRouter + direct APIs)** — [`PROVIDER_ROUTING_PLAN.md`](PROVIDER_ROUTING_PLAN.md) | ✅ |
+| **Pilot (2026-07-24)** | Step ① ✅ · `mistralnemo`/DeepInfra ✅ · [WORKING.md §5](WORKING.md) |
+| **Next** | **Pilot** — 72 runs (`emergence` → `cm`); then **Llama pilot?** (#1b) **or** Stanford main study |
+| **Thesis data** | **Main study** @ Stanford HPC — `llama31` (TODO **16a**) |
 
-**One-shot offline build + provider routing complete (2026-07-14):** mock LLM layer, full run unit, OpenRouter/direct API client, pilot + main-study orchestration, live analytics (Rich + Streamlit + notebook), and H1–H4 analysis pipeline — **153 tests**, 91% coverage. Next: C-05 real-API smoke + pin `openrouter_provider.only`; commit implementation; pilot run.
+### Run Pilot (copy-paste)
+
+**Scope:** Same Centola-3 protocol as thesis design; **only `--model mistralnemo`**. Excluded from Methods chapter — pipeline + directional preview before Stanford.
+
+```bash
+cd "/Users/jannikendress/Master Thesis/02_Topic/Experiment_Code/llm-convention-topology"
+# DEEPINFRA_API_KEY in .env
+
+python3 run_pilot.py --model mistralnemo --program emergence \
+  --run-concurrency 64 --api-concurrency 192
+
+python3 run_pilot.py --model mistralnemo --program cm \
+  --run-concurrency 64 --api-concurrency 192
+```
+
+**Locks:** `max_tokens: 2000` · DeepInfra cap 200 concurrent → pin `--api-concurrency 192` · **do not** run emergence + cm in parallel at full concurrency (separate processes).
+
+---
+
+## Provider routing
+
+| **Provider routing (OpenRouter + direct APIs)** — [`PROVIDER_ROUTING_PLAN.md`](PROVIDER_ROUTING_PLAN.md) | ✅ |
+| **Pilot host** — `mistralnemo` → DeepInfra (`DEEPINFRA_API_KEY`) | ✅ 2026-07-24 |
+| **Thesis confirmatory** — `llama31` → Stanford HPC (self-hosted; endpoints TBD) | ⬜ TODO **16a** |

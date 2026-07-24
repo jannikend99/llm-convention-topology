@@ -2,7 +2,7 @@
 
 **Repository:** [github.com/jannikend99/llm-convention-topology](https://github.com/jannikend99/llm-convention-topology)  
 **Meta-repo path:** `Master Thesis/02_Topic/Experiment_Code/llm-convention-topology/`  
-**Last updated:** 2026-07-24 (async engine default — §15)  
+**Last updated:** 2026-07-24 (Pilot strategy — §5; mistralnemo pilot → optional Llama pilot → Stanford main study)  
 **Language:** English (code + docs)
 
 ---
@@ -23,11 +23,11 @@ This document is the **single source of truth for thesis experiment code**. All 
 
 | Field | Value |
 | --- | --- |
-| Stage | Offline build ✅ · C-05 ✅ · Ashery-split code ✅ · **async engine ✅** (§15) · **pre-pilot proofs complete** (emergence 8/8 · CM smoke · k=6 flip) |
+| Stage | Offline build ✅ · C-05 ✅ · Ashery-split code ✅ · **async engine ✅** (§15) · **pre-pilot proofs complete** (emergence 8/8 · CM smoke · k=6 flip) · **Step ① ✅** · **infra provider (#0b) ✅** |
 | Methods LaTeX | Locked prose still sequential in places — **sync after pilot** (Ashery split already in code) |
-| Next gate | **Step ①** → **provider setup (#0b)** → **Centola-3 Llama pilot** (async default) → share with Doug → G-03/G-04 after data |
-| Pilot | Pre-pilot proofs done; async default path ready; **Centola-3 pilot not started** |
-| Main study | Code ready; **not started** |
+| Next gate | **Pilot** (`mistralnemo`) → review → **optional Llama pilot?** (#1b) → **main study @ Stanford HPC** |
+| Pilot (`mistralnemo`) | **Ready to run** — recipe §5; **not Methods/thesis data**; **not started** |
+| Main study | Code ready; **thesis confirmatory runs** planned Stanford HPC (TODO **16a**) |
 
 ### Next steps (live checklist)
 
@@ -36,19 +36,22 @@ This document is the **single source of truth for thesis experiment code**. All 
 | 1 | Mixing emergence proof (Ashery W=10, 8 seeds) | ✅ **done 2026-07-23** | [`docs/sessions/2026-07-21_together_ashery_proof.md`](docs/sessions/2026-07-21_together_ashery_proof.md) |
 | 2 | CM smoke + k=6 flip demo | ✅ **done 2026-07-23** | log §7.3–7.4 |
 | **2c** | **Async engine (A1/A2/A3/A6 + ⑤ pool scaffold + ⑥ adaptive limiter)** — parallel p1+p2, global API gate, run-level pool | ✅ **done 2026-07-24** | Async is now the **default** engine (`--engine async`). See §15 · meta `TODO.md` **#0** / **#16b** |
-| **2d** | **Step ① — measure baseline + real 429 ceiling** on a Llama pilot slice | ⬜ **before full pilot** | Run `--api-concurrency` sweep, record where 429s start → set as the production ceiling (§15) |
-| **2e** | **Provider setup finalization** — free-credit hosts, same model weights, multi-endpoint pool | ⬜ after **2d**, before pilot | Active **#0b** · `ProviderPool` N>1 · meta `TODO.md` **#16c** |
-| 3 | Centola-3 **Llama pilot** | ⬜ after **2e** | `--program emergence` then `--program cm`; 36+36 runs |
-| 4 | Commit + share package with Doug | ⬜ after #3 | |
-| 5 | Theory/Methods LaTeX sync (split protocol) | ⬜ after pilot narrative stable | TODO **D4** |
+| **2d** | **Step ① — measure baseline + real 429 ceiling** | ✅ **done 2026-07-24** | `mistralnemo` / DeepInfra direct: **0× 429** at 4→192; **200/200 OK** at 192; hard cap **200** concurrent/model. Production pin: **`--api-concurrency 192`** (§5 · §15) |
+| **2e** | **Provider setup (pilot path)** | ✅ **done 2026-07-24** | `mistralnemo` registry + `DEEPINFRA_API_KEY`; smoke ✅; `max_tokens: 2000`. Multi-endpoint `ProviderPool` N>1 **deferred** |
+| 3 | **Pilot** (`mistralnemo`) | ⬜ **next — user-run** | 72 runs, sequential emergence → cm, 64/192. Same protocol as thesis design; **only model differs**. **Not Methods chapter data** |
+| 3b | Review pilot + `analyze.py --model mistralnemo` | ⬜ after **#3** | Exploratory; inform topology direction + Stanford planning |
+| 3c | **Optional Llama pilot?** — cost estimate + go/no-go (TODO **#1b**) | ⬜ after **#3b** | ~$25–80 for 72 API runs; **skip → Stanford main study** |
+| 4 | Stanford HPC + main study (`llama31`) | ⬜ after **#3c** | TODO **16a** — default thesis data path |
+| 5 | Optional Doug preview (directional) | ⬜ | Not confirmatory claims |
+| 6 | Theory/Methods LaTeX sync (split protocol) | ⬜ | TODO **D4**; Methods describes **main study**, not `mistralnemo` pilot runs |
 
 ### Scaling & infra (backlog — TODO #16)
 
 | Sub | What | Trigger | Status |
 | --- | --- | --- | --- |
 | **16b** | Orchestration A1/A3/A6 (async engine) | **Before Centola-3 pilot** | ✅ done 2026-07-24 (§15) |
-| 16a | Stanford HPC (Doug D7) | After pilot + Doug share | ⬜ open |
-| 16c | API providers + free credits (same model weights) | **Before pilot** (after 2d) | ⬜ open — see Active **#0b** |
+| 16a | Stanford HPC (Doug D7) | After pilot + **#1b** decision | ⬜ **default thesis data path** |
+| 16c | API providers — Pilot host | Before Pilot | ✅ DeepInfra `mistralnemo` |
 
 ### Performance / async optimization (✅ implemented — async engine, §15)
 
@@ -63,7 +66,20 @@ This document is the **single source of truth for thesis experiment code**. All 
 | ⑤ | Multi-key / provider pool + failover | `async_llm.py::ProviderPool` | ✅ **scaffold** (N=1 today); adding keys/hosts is config-only (§15 "Providers later") |
 | A5 | CM early-stop after flip | — | **Rejected** (protocol deviation) |
 
-**Gate:** ✅ cleared — async engine landed 2026-07-24. Remaining pre-pilot step is **① measuring the real 429 ceiling** (checklist **#2d**) to set `--api-concurrency`.
+**Gate:** ✅ cleared — async engine + Step ① done. **Next:** Pilot (checklist **#3**).
+
+### Pilot vs. main study (locked 2026-07-24)
+
+| | **Pilot** (`mistralnemo`, now) | **Main study** (`llama31`, thesis) |
+| --- | --- | --- |
+| **Model** | `mistralnemo` (Mistral Nemo 12B, DeepInfra API) | `llama31` (Llama-3.1-70B, **Stanford HPC** self-hosted) |
+| **Grid** | Same 72-run pilot CLI (`run_pilot.py`) | `run_main.py` eligible-count targeting |
+| **Protocol** | Identical (Centola-3, gate 0.95, CM k∈1…6, seeds) | Identical |
+| **In Methods chapter?** | **No** — exploratory / pipeline only | **Yes** — confirmatory |
+
+**After pilot:** optional **Llama API pilot** (same 72-run grid, `llama31`) — **decision after cost estimate** (TODO **#1b**, ~$25–80). **Default if skip:** main study @ **Stanford HPC** (self-hosted Llama; no per-token API).
+
+**Stanford handoff:** After pilot, expected code changes = `config.yaml` registry (cluster endpoint) + env vars — simulation, orchestration, analysis unchanged.
 
 ### Sign-off (implementation plan)
 
@@ -312,9 +328,20 @@ Order rationale (matches user priority): mock layer first so everything downstre
 
 Full design space per model: **topology ∈ {complete, random_regular, lattice} × k ∈ {1…6} × seeds**. Every run is sequential Phase 1→2 with its own k (M03 run-unit lock); `graph_seed` and `run_seed` derived deterministically from `(topology, k, seed_index)` via a fixed base seed so the grid is reproducible.
 
-### Pilot grid (per model)
+### Pilot grid (`mistralnemo`)
 
-12 attempted Phase 1 runs per topology = **36 runs/model**. Since each run carries a k, seeds are assigned k **cyclically** (seeds 1–12 → k = 1,2,3,4,5,6,1,2,…) so pilot runs double as first Phase 2 observations in every k cell (2 per topology × k cell). **Per-model strategy:** pilot executes on **Llama-3.1-70B first** (primary confirmatory model; gates eligibility triage + contingency decision). **Doug email 2026-07-20:** complete open-source design first, **share results**, iterate if needed, **then** expensive models — so Qwen/GPT/Claude pilots are **post-share**, not automatic after Llama sanity-check. Total ceiling still ≤144 if all four eventually pilot.
+**Two programs, run separately** (`--program emergence` **then** `--program cm` — one CLI invocation each; **do not** run both in parallel at full `--api-concurrency`; see recipe below).
+
+| Program | Runs | What each run does |
+| --- | ---: | --- |
+| **emergence** | 36 | Organic Phase 1 (W=10) until stability gate or cap 5000; **no CM** |
+| **cm** | 36 | Prepared population (W=2, incumbent **Q**) → `swap_committed` **k** agents → Phase 2 horizon **1000** |
+
+Per program: **12 seeds × 3 topologies** (`complete`, `random_regular`, `lattice`). CM assigns **k cyclically** per topology (seeds 1–12 → k = 1,2,3,4,5,6,1,2,…) — **2 runs per (topology × k) cell**. Seeds are **deterministic** (`derive_seeds` from `run.base_seed`); **which agents** are committed is a **seeded random sample** of k nodes (`swap_committed`), not fixed node IDs.
+
+**Scope lock (2026-07-24):** 72-run **pilot** on `mistralnemo` — same protocol as main study; **only model differs**. **Excluded from Methods manuscript.** Informs pipeline readiness, directional topology/CM patterns, and Stanford planning. Thesis claims → **main study** (`llama31` @ Stanford HPC).
+
+Doug email 2026-07-20: open-source first — directional preview from pilot may support early share; confirmatory results from **main study**.
 
 ### Main study targets (per model — M01 locks)
 
@@ -327,29 +354,37 @@ Full design space per model: **topology ∈ {complete, random_regular, lattice} 
 ### CLI (copy-paste ready)
 
 ```bash
-# Pilot, primary model, with dry-run preview (async is the default engine)
-python run_pilot.py --model llama31 --dry-run
-python run_pilot.py --model llama31 --run-concurrency 12 --api-concurrency 8
+cd "/Users/jannikendress/Master Thesis/02_Topic/Experiment_Code/llm-convention-topology"
+# Requires DEEPINFRA_API_KEY in .env for mistralnemo; OPENROUTER_API_KEY for llama31
 
-# Step ① — measure the real 429 ceiling on a single-topology slice first
-python run_pilot.py --model llama31 --topology complete --api-concurrency 16   # sweep 4/8/16/…
+# Dry-run (preview grid)
+python3 run_pilot.py --model mistralnemo --program emergence --dry-run
+python3 run_pilot.py --model mistralnemo --program cm --dry-run
 
-# Single debug/smoke run (sync path; unchanged)
-python run_one.py --model llama31 --topology lattice --k 3 --seed 7
-python run_one.py --model llama31 --topology complete --k 1 --seed 0 --max-interactions 20 --smoke
+# --- Pilot (mistralnemo; NOT thesis Methods data) ---
+# Same protocol as main study; only --model mistralnemo differs.
+python3 run_pilot.py --model mistralnemo --program emergence \
+  --run-concurrency 64 --api-concurrency 192
 
-# Main study, one model, mixing first
-python run_main.py --model llama31 --topology complete
-python run_main.py --model llama31            # all topologies per eligibility plan
+python3 run_pilot.py --model mistralnemo --program cm \
+  --run-concurrency 64 --api-concurrency 192
 
-# Resume after interruption (default behavior — skips completed/censored sidecars)
-python run_main.py --model llama31 --retry-failed   # only re-attempts run_status=failed
+# Exploratory analysis (do not import into thesis Results)
+python3 analyze.py --all --model mistralnemo
+
+# Resume after interruption (skips completed/censored; default)
+python3 run_pilot.py --model mistralnemo --program emergence --retry-failed
+
+# Main study (thesis confirmatory — Stanford HPC, llama31; endpoints TBD)
+python3 run_main.py --model llama31 --topology complete
 
 # Offline mock / reference engine (deterministic, no network)
-python run_pilot.py --model mock --engine sync --workers 4
+python3 run_pilot.py --model mock --engine sync --workers 4
 ```
 
-**Parallelization policy:** interactions within a run are inherently sequential (the Markov chain is preserved); parallelism comes from the **async engine** (§15, default `--engine async`) on two axes — `--run-concurrency` (how many runs share the event loop) and `--api-concurrency` (global ceiling on in-flight API calls, set to the Step ① measured limit). Within one interaction the two player calls overlap (`asyncio.gather`, ④). The legacy sync `--workers` (`ThreadPoolExecutor`) path is retained as the offline mock/reference engine only. No shared state between runs; each run owns its run_id files.
+**Parallelization policy:** interactions within a run are sequential (Markov chain). Parallelism = **`--api-concurrency`** (global in-flight API calls — **set from Step ①**) + **`--run-concurrency`** (how many runs share the event loop; target `≥ api-concurrency / 2`). Within one interaction, two player calls overlap (`asyncio.gather`, ④). **Do not** launch emergence + cm in parallel at full `--api-concurrency` each — separate processes do not share a `RateLimiter` (192+192 > DeepInfra cap 200).
+
+**Decoding lock (2026-07-24):** `max_tokens: 2000` on `llama31` and `mistralnemo` — CoT + `{'value':…}` must not truncate (C-05 / proof D6; 512 caused parse fails).
 
 **Checkpointing:** tracker + simulation state pickled every 50 interactions (Ashery cadence) to `{run_id}.pkl` with `run_status = in_progress` in the sidecar; final write flips status. A crashed run resumes from the last checkpoint on next batch invocation.
 
@@ -562,7 +597,7 @@ Retired Ashery keys: `network.alpha/beta/erdos_p` (scale-free/ER), `params.initi
 | 1 | GPT-5.4 / Claude 5.5 pinned model strings + provider access | §4 registry entries; Phase C smoke for those two models (Llama/Qwen unaffected) | Doug / Jannik | **deferred 2026-07-20** — Doug email: open-source first; strings after result share ([Doug_Open_Questions.md](../../../01_Orga/Doug_Open_Questions.md)) |
 | 2 | **Bib mismatch found 2026-07-13:** `asheryAINormsZenodo2024` cited in Methods/Appendix | Appendix repro citations | Jannik | **closed 2026-07-14** — entry in `thesis-writing/literature.bib` (uncommitted) |
 | 3 | OpenRouter for Llama-3.1-70B + Qwen2.5-72B (`OPENROUTER_API_KEY`; pin `openrouter_provider.only` after C-05 smoke) | §4 registry; Phase C smoke | Jannik | **closed 2026-07-14** — see [`PROVIDER_ROUTING_PLAN.md`](PROVIDER_ROUTING_PLAN.md) |
-| 4 | API budget + per-provider rate limits (informs `--workers` default and main-study wall-clock) | Phase D/G scheduling only — not code structure | Jannik | **deferred** proprietary (Doug); estimate from Llama pilot tokens for open-source scheduling |
+| 4 | API budget + per-provider rate limits | Phase D/G scheduling | Jannik | **partial 2026-07-24** — pilot ~$1–3 (`mistralnemo`); optional Llama pilot ~$25–80 (#1b); main study @ Stanford HPC |
 | 5 | **Structured Output vs. Ashery parsing** — API JSON-schema/constrained enum `{Q,M}` vs. in-prompt format + `parse_label()` (see Doug **D6**) | Pre-pilot protocol lock; `llm.py` / `OpenAICompatClient` if switching before main study | Doug / Jannik | **deferred** — keep Ashery parse path unless pilot failure rates force revisit |
 | 6 | **C-05 smoke + OpenRouter `only` pin** — after `OPENROUTER_API_KEY` / `GEMINI_API_KEY` in `.env`, run `run_one.py --smoke` for `llama31`, `qwen25`, `gemini35`; add discovered `openrouter_provider.only` slugs to `config.yaml` | Reproducible backing host for open-weight models | Jannik | **closed 2026-07-20** — `llama31`+`qwen25` smoke 20/20 via DeepInfra; `only: ["deepinfra"]` + `max_tokens: 512` (200 truncated CoT before `value`); `gemini35` deferred |
 
@@ -592,6 +627,7 @@ Retired Ashery keys: `network.alpha/beta/erdos_p` (scale-free/ER), `params.initi
 | 2026-07-20 — Doug email (open-source first) | Design ready as-is; Llama pilot → share results → possible iteration → expensive models later. §13 #1/#4/#5 deferred. See [`01_Orga/Doug_Open_Questions.md`](../../../01_Orga/Doug_Open_Questions.md). |
 | 2026-07-24 — **Async engine (checklist #2c ✅)** | New default parallelisation path — steps ②–⑥ of §15. `async_llm.py` (`AsyncOpenAICompatClient`, `AsyncRetryPolicy` — exact async twin of `RetryPolicy`; `RateLimiter` global ceiling + `Retry-After` cooldown ⑥; `ProviderPool` round-robin + 429 failover ⑤ scaffold, N=1 today; `AsyncClientAdapter` wraps the sync `MockLLMClient`). `async_simulation.py` (`make_async_interaction_step` — RNG drained in sync order, then both player calls via `asyncio.gather` ④). `async_run.py` (`execute_run_async` — each run stays a sequential coroutine; persistence/gate/resume/checkpoint reused verbatim from `run.py`). `async_orchestration.py` (`run_pilot_async`/`run_main_study_async` — `asyncio.gather` + `Semaphore` over runs ③, shared `ProviderPool`/`RateLimiter`). `run_pilot.py`/`run_main.py` default to `--engine async` with `--run-concurrency`/`--api-concurrency`; sync `--workers` retained as the offline mock/reference engine only. **Determinism lock verified:** `tests/test_async_run_integration.py` asserts byte-identical emergence + CM trajectories vs. the sync engine for the same seed/mock. Tests: +14 (`test_async_llm.py`, `test_async_run_integration.py`); full async subsuite green (retry/backoff order, rate-limiter bound, pool round-robin + failover, sync↔async equivalence, CM zero-API short-circuit). **No legacy async fallback** (per instruction). **Providers later:** multi-key/multi-host fan-out is config-only via `build_provider_pool` (pass N clients to `ProviderPool`; `from_specs` constructor is the planned convenience, not yet built) — no simulation change. Next: **Step ① 429-ceiling measurement** (#2d) to set `--api-concurrency`. |
 | 2026-07-24 — **Async review remediation** (reviewer #2/#3) | **#2 live-429 gap fixed:** `ProviderPool.complete` now catches the SDK's real `openai.RateLimitError` (not only the synthetic `RateLimitedError`) → `_retry_after_seconds` reads `Retry-After`, endpoint cooldown + global `RateLimiter.pause()` fire before re-raise, so ⑥ throttles the whole loop on live 429s instead of every worker retrying independently. **#3 run-level test added:** `test_async_batch_matches_sync_batch_and_resumes` asserts `run_batch_async` ↔ sync `run_batch` identical `{run_id: status}` for the mock and that a second pass skips all (resume). +3 async tests (17 total, all green). #1 (Step ① measurement) stays the user's pre-pilot run; #4 (async↔sync duplication) accepted, guarded by the equivalence tests; #5 (start `--run-concurrency 6 --api-concurrency 4`, then scale) folded into the §15 run recipe. Defaults left at 12/8 (documented as optimistic). |
+| 2026-07-24 — **Pilot strategy (#3 scope lock)** | 72-run pilot on `mistralnemo` (same protocol; model only differs); excluded from Methods. **After pilot:** optional Llama API pilot (**#1b** cost + decision) **or** Stanford main study (`llama31`). §5 + `TODO.md` updated. |
 
 ---
 
@@ -605,7 +641,7 @@ Retired Ashery keys: `network.alpha/beta/erdos_p` (scale-free/ER), `params.initi
 
 | Step | What | Where | Status |
 | --- | --- | --- | --- |
-| **①** | **Measure baseline + real 429 ceiling** — run a pilot slice at rising `--api-concurrency`, record where 429s begin. This single number is the provider ceiling that governs everything downstream. **No code change — a measurement run.** | pilot CLI | ⬜ **do before full pilot** (#2d) |
+| **①** | **Measure baseline + real 429 ceiling** — sweep `--api-concurrency` on live provider; pin production ceiling. | pilot CLI / burst probe | ✅ **done 2026-07-24** — `mistralnemo`/DeepInfra: stable to **192**; hard cap **200** concurrent/model |
 | **②** | **Async client** — `AsyncOpenAICompatClient` (`AsyncOpenAI`); `complete` is a coroutine. Wire assembly (OpenRouter referer/title/cache headers, `extra_body.provider`) is byte-identical to the sync client. `AsyncRetryPolicy` is the exact async twin of `RetryPolicy` (same `max_attempts`, 2/4/8 s backoff, one code path for transport/rate-limit/API/parse failures — M03 lock; only `await asyncio.sleep` instead of blocking). SDK auto-retries stay off (`max_retries=0`). | `async_llm.py` | ✅ |
 | **③** | **Async run scheduler** — the `ThreadPoolExecutor` batch is replaced by `asyncio.gather` + `asyncio.Semaphore(run_concurrency)`. Each run stays a **sequential coroutine** (`await` per interaction) — the Markov chain is untouched; hundreds of runs simply share one event loop instead of threads. | `async_orchestration.py` | ✅ |
 | **④** | **Both player calls concurrent** — in one interaction the two non-committed player completions overlap via `asyncio.gather` instead of a `for player` loop. Committed agents short-circuit to `committed_to` with **zero** client calls (CM zero-API lock). ~2× per interaction when both players call the LLM. | `async_simulation.py` | ✅ |
@@ -630,19 +666,19 @@ Today each real model resolves to **one** endpoint (`build_provider_pool` → on
 ### Run recipe
 
 ```bash
-# ① Measure the ceiling first (single topology slice), sweeping api-concurrency:
-python run_pilot.py --model llama31 --topology complete --api-concurrency 4
-python run_pilot.py --model llama31 --topology complete --api-concurrency 8
-python run_pilot.py --model llama31 --topology complete --api-concurrency 16   # note where 429s start
+# Step ① result (2026-07-24): DeepInfra mistralnemo — pin --api-concurrency 192
 
-# First live pilot: start conservative, then scale up once stable:
-python run_pilot.py --model llama31 --run-concurrency 6 --api-concurrency 4
+# Pilot — sequential emergence → cm (NOT Methods data)
+python3 run_pilot.py --model mistralnemo --program emergence \
+  --run-concurrency 64 --api-concurrency 192
+python3 run_pilot.py --model mistralnemo --program cm \
+  --run-concurrency 64 --api-concurrency 192
 
-# Full pilot with api-concurrency pinned to the measured ceiling (defaults are 12/8):
-python run_pilot.py --model llama31 --run-concurrency 12 --api-concurrency <measured>
+# Main study (thesis confirmatory — Stanford HPC, llama31; endpoints TBD)
+python3 run_main.py --model llama31 --topology complete
 
 # Offline mock / reference engine (deterministic, no rate limiter):
-python run_pilot.py --model mock --engine sync --workers 4
+python3 run_pilot.py --model mock --engine sync --workers 4
 ```
 
 ### Tests
@@ -651,5 +687,4 @@ python run_pilot.py --model mock --engine sync --workers 4
 
 ### Deferred
 
-- **Step ①** measurement (the only pre-pilot blocker for the async path; checklist **#2d**).
-- **Step ⑤** real multi-endpoint fan-out — scaffold is live at N=1; adding endpoints is config-only and happens when keys/hosts are provisioned (post-pilot, per Doug "open-source first").
+- **Step ⑤** real multi-endpoint fan-out — scaffold is live at N=1; adding endpoints is config-only (optional DeepInfra limit increase to 400; not required at 192 cap).
