@@ -13,7 +13,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-if __name__ == "__main__" and __package__ is None:
+if __name__ == "__main__" and __package__ is None:  # pragma: no cover
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd

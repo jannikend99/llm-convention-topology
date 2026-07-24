@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-if __name__ == "__main__" and __package__ is None:
+if __name__ == "__main__" and __package__ is None:  # pragma: no cover
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from rich.layout import Layout
@@ -143,5 +143,5 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

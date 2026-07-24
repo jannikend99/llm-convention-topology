@@ -86,7 +86,7 @@ def get_interaction_network(
     else:
         raise ValueError(f"Unsupported network_type: {network_type}")
 
-    if minority_size > 0:
+    if minority_size > 0:  # pragma: no cover -- unreachable; minority_size != 0 raises above
         committed_ids = random.sample(list(network.keys()), k=minority_size)
         for node_id in committed_ids:
             network[node_id]["committed_tag"] = True
