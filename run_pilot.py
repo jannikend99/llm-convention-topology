@@ -29,7 +29,25 @@ def main(argv: list[str] | None = None) -> int:
         "--workers",
         type=int,
         default=1,
-        help="Across-run parallelism; each worker owns its run_id files. Default 1; 2–4 ok for OpenRouter.",
+        help="[sync engine] Across-run thread parallelism; each worker owns its run_id files.",
+    )
+    parser.add_argument(
+        "--engine",
+        choices=["async", "sync"],
+        default="async",
+        help="async (default): asyncio scheduler + provider pool. sync: legacy ThreadPool path.",
+    )
+    parser.add_argument(
+        "--run-concurrency",
+        type=int,
+        default=12,
+        help="[async] Max runs in flight at once.",
+    )
+    parser.add_argument(
+        "--api-concurrency",
+        type=int,
+        default=8,
+        help="[async] Global ceiling on in-flight API calls (set to the measured provider limit, Step ①).",
     )
     parser.add_argument("--retry-failed", action="store_true")
     parser.add_argument("--quiet", action="store_true", help="Disable live [start]/[done]/[alive] progress.")
@@ -51,18 +69,35 @@ def main(argv: list[str] | None = None) -> int:
         print(f"total_rows={len(cells)}")
         return 0
 
-    results = _run_pilot(
-        config,
-        model_spec,
-        program=args.program,
-        data_dir=Path(config.paths.data),
-        logs_dir=Path(config.paths.logs),
-        mock_policy=args.mock_policy,
-        workers=args.workers,
-        retry_failed=args.retry_failed,
-        topology_filter=args.topology,
-        progress=not args.quiet,
-    )
+    if args.engine == "async":
+        from convention_topology.async_orchestration import run_pilot_async
+
+        results = run_pilot_async(
+            config,
+            model_spec,
+            program=args.program,
+            data_dir=Path(config.paths.data),
+            logs_dir=Path(config.paths.logs),
+            mock_policy=args.mock_policy,
+            run_concurrency=args.run_concurrency,
+            api_concurrency=args.api_concurrency,
+            retry_failed=args.retry_failed,
+            topology_filter=args.topology,
+            progress=not args.quiet,
+        )
+    else:
+        results = _run_pilot(
+            config,
+            model_spec,
+            program=args.program,
+            data_dir=Path(config.paths.data),
+            logs_dir=Path(config.paths.logs),
+            mock_policy=args.mock_policy,
+            workers=args.workers,
+            retry_failed=args.retry_failed,
+            topology_filter=args.topology,
+            progress=not args.quiet,
+        )
     for run_id, status in sorted(results.items()):
         print(f"{run_id}: {status}")
     return 0

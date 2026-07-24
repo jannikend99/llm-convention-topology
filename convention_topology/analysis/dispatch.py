@@ -14,7 +14,7 @@ from typing import Any
 
 import pandas as pd
 
-from convention_topology.analysis.common import critical_mass, eligibility_table, load_run_table
+from convention_topology.analysis.common import eligibility_table, load_run_table
 from convention_topology.analysis.cross_model import cross_model_summary
 from convention_topology.analysis.h1 import h1_analysis
 from convention_topology.analysis.h2 import h2_analysis

@@ -122,7 +122,6 @@ class MockLLMClientTests(unittest.TestCase):
         self.assertEqual([first, second, third], ["A", "B", "A"])
 
     def test_random_policy_never_passes_gate(self):
-        rng = random.Random(42)
         client_a = MockLLMClient(policy="random", rng=random.Random(1), options=OPTIONS)
         client_b = MockLLMClient(policy="random", rng=random.Random(2), options=OPTIONS)
         tracker = empty_tracker()

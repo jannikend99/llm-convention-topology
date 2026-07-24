@@ -29,7 +29,25 @@ def main(argv: list[str] | None = None) -> int:
         "--workers",
         type=int,
         default=1,
-        help="Across-cell parallelism (topology×k cells). Default 1; 2–4 ok for OpenRouter.",
+        help="[sync engine] Across-cell thread parallelism (topology×k cells).",
+    )
+    parser.add_argument(
+        "--engine",
+        choices=["async", "sync"],
+        default="async",
+        help="async (default): asyncio scheduler + provider pool. sync: legacy ThreadPool path.",
+    )
+    parser.add_argument(
+        "--run-concurrency",
+        type=int,
+        default=12,
+        help="[async] Max runs in flight at once (across all cells).",
+    )
+    parser.add_argument(
+        "--api-concurrency",
+        type=int,
+        default=8,
+        help="[async] Global ceiling on in-flight API calls (set to the measured provider limit, Step ①).",
     )
     parser.add_argument("--retry-failed", action="store_true")
     parser.add_argument("--quiet", action="store_true", help="Disable live [start]/[done]/[alive] progress.")
@@ -52,18 +70,39 @@ def main(argv: list[str] | None = None) -> int:
         print(f"total_cells={len(targets)}")
         return 0
 
-    results = run_main_study(
-        config,
-        model_spec,
-        program=args.program,
-        data_dir=Path(config.paths.data),
-        logs_dir=Path(config.paths.logs),
-        mock_policy=args.mock_policy,
-        retry_failed=args.retry_failed,
-        topology_filter=args.topology,
-        workers=args.workers,
-        progress=not args.quiet,
-    )
+    if args.engine == "async":
+        import asyncio
+
+        from convention_topology.async_orchestration import run_main_study_async
+
+        results = asyncio.run(
+            run_main_study_async(
+                config,
+                model_spec,
+                program=args.program,
+                data_dir=Path(config.paths.data),
+                logs_dir=Path(config.paths.logs),
+                mock_policy=args.mock_policy,
+                retry_failed=args.retry_failed,
+                topology_filter=args.topology,
+                run_concurrency=args.run_concurrency,
+                api_concurrency=args.api_concurrency,
+                progress=not args.quiet,
+            )
+        )
+    else:
+        results = run_main_study(
+            config,
+            model_spec,
+            program=args.program,
+            data_dir=Path(config.paths.data),
+            logs_dir=Path(config.paths.logs),
+            mock_policy=args.mock_policy,
+            retry_failed=args.retry_failed,
+            topology_filter=args.topology,
+            workers=args.workers,
+            progress=not args.quiet,
+        )
     for result in results:
         print(
             f"program={result['program']} topology={result['topology']} k={result['cm_k']} "

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from numpy.linalg import LinAlgError

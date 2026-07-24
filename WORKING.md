@@ -2,7 +2,7 @@
 
 **Repository:** [github.com/jannikend99/llm-convention-topology](https://github.com/jannikend99/llm-convention-topology)  
 **Meta-repo path:** `Master Thesis/02_Topic/Experiment_Code/llm-convention-topology/`  
-**Last updated:** 2026-07-24 (orchestration = TODO only — code revert)  
+**Last updated:** 2026-07-24 (async engine default — §15)  
 **Language:** English (code + docs)
 
 ---
@@ -23,10 +23,10 @@ This document is the **single source of truth for thesis experiment code**. All 
 
 | Field | Value |
 | --- | --- |
-| Stage | Offline build ✅ · C-05 ✅ · Ashery-split code ✅ · **pre-pilot proofs complete** (emergence 8/8 · CM smoke · k=6 flip) |
+| Stage | Offline build ✅ · C-05 ✅ · Ashery-split code ✅ · **async engine ✅** (§15) · **pre-pilot proofs complete** (emergence 8/8 · CM smoke · k=6 flip) |
 | Methods LaTeX | Locked prose still sequential in places — **sync after pilot** (Ashery split already in code) |
-| Next gate | **Orchestration refactor (A1/A3/A6)** → **Centola-3 Llama pilot** → share with Doug → G-03/G-04 after data |
-| Pilot | Pre-pilot proofs done; **Centola-3 pilot not started** |
+| Next gate | **Step ① baseline + rate-limit ceiling measurement** → **Centola-3 Llama pilot** (async default) → share with Doug → G-03/G-04 after data |
+| Pilot | Pre-pilot proofs done; async default path ready; **Centola-3 pilot not started** |
 | Main study | Code ready; **not started** |
 
 ### Next steps (live checklist)
@@ -35,8 +35,9 @@ This document is the **single source of truth for thesis experiment code**. All 
 | --- | --- | --- | --- |
 | 1 | Mixing emergence proof (Ashery W=10, 8 seeds) | ✅ **done 2026-07-23** | [`docs/sessions/2026-07-21_together_ashery_proof.md`](docs/sessions/2026-07-21_together_ashery_proof.md) |
 | 2 | CM smoke + k=6 flip demo | ✅ **done 2026-07-23** | log §7.3–7.4 |
-| **2c** | **Orchestration refactor (A1/A3/A6)** — parallel p1+p2, API gate, run-level pool | ⬜ **before pilot** | See § Performance below · meta `TODO.md` **#0** / **#16b** |
-| 3 | Centola-3 **Llama pilot** | ⬜ after **2c** | `--program emergence` then `--program cm`; 36+36 runs |
+| **2c** | **Async engine (A1/A2/A3/A6 + ⑤ pool scaffold + ⑥ adaptive limiter)** — parallel p1+p2, global API gate, run-level pool | ✅ **done 2026-07-24** | Async is now the **default** engine (`--engine async`). See §15 · meta `TODO.md` **#0** / **#16b** |
+| **2d** | **Step ① — measure baseline + real 429 ceiling** on a Llama pilot slice | ⬜ **before full pilot** | Run `--api-concurrency` sweep, record where 429s start → set as the production ceiling (§15) |
+| 3 | Centola-3 **Llama pilot** | ⬜ after **2d** | `--program emergence` then `--program cm`; 36+36 runs |
 | 4 | Commit + share package with Doug | ⬜ after #3 | |
 | 5 | Theory/Methods LaTeX sync (split protocol) | ⬜ after pilot narrative stable | TODO **D4** |
 
@@ -44,23 +45,24 @@ This document is the **single source of truth for thesis experiment code**. All 
 
 | Sub | What | Trigger | Status |
 | --- | --- | --- | --- |
-| **16b** | Orchestration A1/A3/A6 | **Before Centola-3 pilot** | ⬜ open |
+| **16b** | Orchestration A1/A3/A6 (async engine) | **Before Centola-3 pilot** | ✅ done 2026-07-24 (§15) |
 | 16a | Stanford HPC (Doug D7) | After pilot + Doug share | ⬜ open |
 | 16c | API providers + free credits | After pilot cost estimate | ⬜ open |
 
-### Performance / async optimization (TODO — not implemented)
+### Performance / async optimization (✅ implemented — async engine, §15)
 
-**Context:** Wall-clock dominated by sequential LLM I/O. Current code: across-run `--workers` on pilot grid only; main study parallelizes **cells** not all seeds; p1+p2 **sequential** per interaction.
+**Context:** Wall-clock dominated by sequential LLM I/O. The async engine (§15) is now the **default** path (`--engine async`); the sync `--workers` path is retained only as the offline mock/reference engine. Detailed design, concurrency knobs, determinism lock and run recipe live in **§15**.
 
-| ID | Opportunity | Where | Notes |
+| ID | Opportunity | Where | Status |
 | --- | --- | --- | --- |
-| **A1** | Parallel p1+p2 per interaction | `simulation.py` | ~2× per interaction when both need LLM |
-| **A3** | Global API concurrency semaphore | `llm.py` / `orchestration.py` | Fewer 503s with `--workers` > 1 |
-| **A6** | Run-level pool (pilot + main) | `orchestration.py` | Global queue; not cell-sequential seeds |
-| A2 | Unified async client | `run.py` / `llm.py` | Optional; threads OK for v1 |
+| **A1** | Parallel p1+p2 per interaction | `async_simulation.py` | ✅ `asyncio.gather` on the two player calls (④); RNG drained in sync order first |
+| **A2** | Unified async client | `async_llm.py` | ✅ `AsyncOpenAICompatClient` + `AsyncRetryPolicy` (②), wire-identical to sync |
+| **A3** | Global API concurrency semaphore | `async_llm.py::RateLimiter` | ✅ shared ceiling across all runs (③⑥); honours `Retry-After` |
+| **A6** | Run-level pool (pilot + main) | `async_orchestration.py` | ✅ `asyncio.gather` + `Semaphore` over runs; global queue, not cell-sequential (③) |
+| ⑤ | Multi-key / provider pool + failover | `async_llm.py::ProviderPool` | ✅ **scaffold** (N=1 today); adding keys/hosts is config-only (§15 "Providers later") |
 | A5 | CM early-stop after flip | — | **Rejected** (protocol deviation) |
 
-**Gate:** implement **A1 + A3 + A6 before Centola-3 pilot** (see checklist **#2c**).
+**Gate:** ✅ cleared — async engine landed 2026-07-24. Remaining pre-pilot step is **① measuring the real 429 ceiling** (checklist **#2d**) to set `--api-concurrency`.
 
 ### Sign-off (implementation plan)
 
@@ -324,11 +326,14 @@ Full design space per model: **topology ∈ {complete, random_regular, lattice} 
 ### CLI (copy-paste ready)
 
 ```bash
-# Pilot, primary model, with dry-run preview
+# Pilot, primary model, with dry-run preview (async is the default engine)
 python run_pilot.py --model llama31 --dry-run
-python run_pilot.py --model llama31
+python run_pilot.py --model llama31 --run-concurrency 12 --api-concurrency 8
 
-# Single debug/smoke run
+# Step ① — measure the real 429 ceiling on a single-topology slice first
+python run_pilot.py --model llama31 --topology complete --api-concurrency 16   # sweep 4/8/16/…
+
+# Single debug/smoke run (sync path; unchanged)
 python run_one.py --model llama31 --topology lattice --k 3 --seed 7
 python run_one.py --model llama31 --topology complete --k 1 --seed 0 --max-interactions 20 --smoke
 
@@ -338,9 +343,12 @@ python run_main.py --model llama31            # all topologies per eligibility p
 
 # Resume after interruption (default behavior — skips completed/censored sidecars)
 python run_main.py --model llama31 --retry-failed   # only re-attempts run_status=failed
+
+# Offline mock / reference engine (deterministic, no network)
+python run_pilot.py --model mock --engine sync --workers 4
 ```
 
-**Parallelization policy:** interactions within a run are inherently sequential; parallelism is **across runs** — `--workers N` (default 1, pilot recommendation ≤ 4/provider) with per-provider rate-limit awareness. No shared state between runs; each worker owns its run_id files.
+**Parallelization policy:** interactions within a run are inherently sequential (the Markov chain is preserved); parallelism comes from the **async engine** (§15, default `--engine async`) on two axes — `--run-concurrency` (how many runs share the event loop) and `--api-concurrency` (global ceiling on in-flight API calls, set to the Step ① measured limit). Within one interaction the two player calls overlap (`asyncio.gather`, ④). The legacy sync `--workers` (`ThreadPoolExecutor`) path is retained as the offline mock/reference engine only. No shared state between runs; each run owns its run_id files.
 
 **Checkpointing:** tracker + simulation state pickled every 50 interactions (Ashery cadence) to `{run_id}.pkl` with `run_status = in_progress` in the sidecar; final write flips status. A crashed run resumes from the last checkpoint on next batch invocation.
 
@@ -576,8 +584,71 @@ Retired Ashery keys: `network.alpha/beta/erdos_p` (scale-free/ER), `params.initi
 | 2026-07-14 — Phase G complete (G-01, G-02); **one-shot offline build done** | `run_main.py` (`cell_targets()` — 18 rows = 3 topologies × 6 k, targets pulled from `config.yaml`'s `run.main_eligible_targets`/`attempted_cap_factor`; `run_cell_targeted()` keeps launching seeds per (topology, cm_k) cell until eligible count reaches the target or the attempted cap is hit; reuses `run_pilot.py`'s client/config/retry-policy builders — no third copy of that logic). Verified live: `python run_main.py --model mock --dry-run` → exactly 18 rows with correct [15-20]/[8-10] targets and 45/24 attempted caps; a forced-censoring mocked cell (`--mock-policy random`) stops exactly at the attempted cap with 0 eligible, matching on-disk sidecars. `tests/test_orchestration.py` +3 tests (grid shape/targets, forced-censoring cap, early-stop-on-target). **Ran the full §6 CLI smoke sequence end-to-end** (`run_one.py --smoke`, `run_pilot.py --dry-run`/full batch, `analyze.py --all`, `run_main.py --dry-run`) plus the secrets grep — all pass offline. Full suite: **121 tests green, coverage 92%** (≥85% gate). All 43 non-⏸ todos in `IMPLEMENTATION_PLAN.md` are now ✅; only C-05 (paid real-API smoke) and G-03/G-04 (dependency freeze + repro pins, by definition after real data collection) remain, correctly deferred outside the one-shot build. |
 | 2026-07-14 — Phase F complete (F-01…F-07) | `dvs.py` (`label_shares`/`dominant_share`/`shannon_entropy` — 144-emission denominator, single shared helper; `flip`/`flip_50`/`time_to_flip`/`incumbent_label`/`rounds_to_gate` — no `flip_resisted`, lexicographic tie-break documented in the module docstring); `analysis/common.py` (`load_run_table` joins sidecar + pickle-derived DVs, `eligibility_table`, `critical_mass`); `analysis/h1.py`/`h2.py`/`h3a.py`/`h3b.py`/`h4.py`/`cross_model.py` (scipy t/Wilcoxon/Mann-Whitney/chi2, statsmodels Logit + LR tests, pygam `LogisticGAM`, confirmatory/exploratory auto-labeling on the eligibility floor, cross-model kept descriptive/unpooled); `analyze.py` CLI dispatch. Added `numpy`/`scipy<1.17`/`statsmodels`/`pygam==0.12.0` to `requirements.txt` per §7.2 pin. Verified live: `python analyze.py --all --model mock` against a real 36-run mocked pilot batch produced sane H1-H4 JSON + eligibility.csv with exit code 0 (small-n perfect-separation warnings from statsmodels/pygam are expected on 36-row mocked data, not errors). `tests/test_dvs.py` (17 tests) + `tests/test_analysis.py` (23 tests, incl. an `analyze.py` CLI integration test against a mocked batch); full suite 118 tests green, coverage 92% (≥85% gate). |
 | 2026-07-14 — Phase E complete (E-01…E-06) | `live/reader.py`, `live/cost.py`, `live/monitor.py`, `live/web.py` (Streamlit), `notebooks/pilot_dashboard.ipynb`; read-only verification + bug fixes (resume CM growth, reader model filter). Full suite 78 tests at E exit; later 150 after R1/R2. |
-| 2026-07-14 — Code review R1 remediation (FIX_PLAN.md) | All R1 findings fixed: **B1** H3a primary GAM-vs-linear LR; **B2** real `code_commit` via `orchestration.get_code_commit`; **M1** Phase 2 `shared_shuffle=True`; **M2** single `modal_lexicographic`; **M3** H3b full-grid confirmatory check; **M4** thin CLIs + `orchestration.py`/`analysis/dispatch.py`; **N1–N7** persistence writers, networks guard, glob-path pickle loading, dvs guards, dependency pins, typed exceptions. 146 tests green, 91% coverage. Reports: `CODE_REVIEW_REPORT.md`, `FIX_PLAN.md`. |
+| 2026-07-14 — Code review R1 remediation (FIX_PLAN.md) | All R1 findings fixed: **B1** H3a primary GAM-vs-linear LR; **B2** real `code_commit` via `orchestration.get_code_commit`; **M1** Phase 2 `shared_shuffle=True`; **M2** single `modal_lexicographic`; **M3** H3b full-grid confirmatory check; **M4** thin CLIs + `orchestration.py`/`analysis/dispatch.py`; **N1–N7** persistence writers, networks guard, glob-path pickle loading, dvs guards, dependency pins, typed exceptions. 146 tests green, 91% coverage. (Detailed R1/R2 review reports + fix plans removed 2026-07-24 in the repo cleanup; this row is the retained summary.) |
 | 2026-07-14 — Provider routing (OpenRouter + direct APIs) | `config.yaml` registry: Llama/Qwen → OpenRouter (`meta-llama/llama-3.1-70b-instruct`, `qwen/qwen-2.5-72b-instruct`); GPT/Claude → direct OpenAI/Anthropic; auxiliary `gemini35` → Google OpenAI-compat. `ModelSpec.provider` + `openrouter_provider`; `OpenAICompatClient` sends OR headers + `extra_body.provider`; `config_hash` includes routing pins. 153 tests green, 91% coverage. **C-05 follow-up:** pin `openrouter_provider.only` after paid smoke. See [`PROVIDER_ROUTING_PLAN.md`](PROVIDER_ROUTING_PLAN.md). |
 | 2026-07-20 — **C-05 complete** (OpenRouter smoke) | Paid smoke `llama31` + `qwen25` 20/20; pin `only: ["deepinfra"]`; `max_tokens` 200→512 (CoT truncation before `{'value':…}`). Full write-up: [`docs/sessions/2026-07-20_C05_openrouter_smoke.md`](docs/sessions/2026-07-20_C05_openrouter_smoke.md). `gemini35` deferred. Next: commit → real pilot. |
 | 2026-07-20 — OpenRouter response cache off | `OpenAICompatClient` sends `X-OpenRouter-Cache: false` on every OR call (overrides presets). Response caching would replay identical completions for identical agent histories → confound Naming Game. Prompt-prefix caching left alone. |
 | 2026-07-20 — Doug email (open-source first) | Design ready as-is; Llama pilot → share results → possible iteration → expensive models later. §13 #1/#4/#5 deferred. See [`01_Orga/Doug_Open_Questions.md`](../../../01_Orga/Doug_Open_Questions.md). |
+| 2026-07-24 — **Async engine (checklist #2c ✅)** | New default parallelisation path — steps ②–⑥ of §15. `async_llm.py` (`AsyncOpenAICompatClient`, `AsyncRetryPolicy` — exact async twin of `RetryPolicy`; `RateLimiter` global ceiling + `Retry-After` cooldown ⑥; `ProviderPool` round-robin + 429 failover ⑤ scaffold, N=1 today; `AsyncClientAdapter` wraps the sync `MockLLMClient`). `async_simulation.py` (`make_async_interaction_step` — RNG drained in sync order, then both player calls via `asyncio.gather` ④). `async_run.py` (`execute_run_async` — each run stays a sequential coroutine; persistence/gate/resume/checkpoint reused verbatim from `run.py`). `async_orchestration.py` (`run_pilot_async`/`run_main_study_async` — `asyncio.gather` + `Semaphore` over runs ③, shared `ProviderPool`/`RateLimiter`). `run_pilot.py`/`run_main.py` default to `--engine async` with `--run-concurrency`/`--api-concurrency`; sync `--workers` retained as the offline mock/reference engine only. **Determinism lock verified:** `tests/test_async_run_integration.py` asserts byte-identical emergence + CM trajectories vs. the sync engine for the same seed/mock. Tests: +14 (`test_async_llm.py`, `test_async_run_integration.py`); full async subsuite green (retry/backoff order, rate-limiter bound, pool round-robin + failover, sync↔async equivalence, CM zero-API short-circuit). **No legacy async fallback** (per instruction). **Providers later:** multi-key/multi-host fan-out is config-only via `build_provider_pool` (pass N clients to `ProviderPool`; `from_specs` constructor is the planned convenience, not yet built) — no simulation change. Next: **Step ① 429-ceiling measurement** (#2d) to set `--api-concurrency`. |
+| 2026-07-24 — **Async review remediation** (reviewer #2/#3) | **#2 live-429 gap fixed:** `ProviderPool.complete` now catches the SDK's real `openai.RateLimitError` (not only the synthetic `RateLimitedError`) → `_retry_after_seconds` reads `Retry-After`, endpoint cooldown + global `RateLimiter.pause()` fire before re-raise, so ⑥ throttles the whole loop on live 429s instead of every worker retrying independently. **#3 run-level test added:** `test_async_batch_matches_sync_batch_and_resumes` asserts `run_batch_async` ↔ sync `run_batch` identical `{run_id: status}` for the mock and that a second pass skips all (resume). +3 async tests (17 total, all green). #1 (Step ① measurement) stays the user's pre-pilot run; #4 (async↔sync duplication) accepted, guarded by the equivalence tests; #5 (start `--run-concurrency 6 --api-concurrency 4`, then scale) folded into the §15 run recipe. Defaults left at 12/8 (documented as optimistic). |
+
+---
+
+## 15. Async engine (parallelisation)
+
+**Purpose.** Wall-clock is dominated by sequential LLM I/O. This section is the design spec for the async engine that removes that bottleneck. It is the **default** run path (`--engine async` on `run_pilot.py`/`run_main.py`); the synchronous `--workers` (`ThreadPoolExecutor`) path is retained **only** as the offline mock/reference engine. There is no legacy async fallback — one async code path serves all real-provider runs.
+
+**Two-engine split (why both exist).** The sync engine (`llm.py` / `simulation.py` / `run.py` / `orchestration.py`) stays the unit-tested, offline, deterministic reference. The async engine (`async_*.py`) is a strict throughput sibling: every non-I/O decision (seeding, grid construction, gating, resume, checkpointing, metadata, persistence) is **reused verbatim** from the sync modules so the two engines cannot drift. The reproducibility guarantee is a test, not a hope: `tests/test_async_run_integration.py` asserts **byte-identical** emergence and CM trajectories (`tracker.outcome`/`answers`/`players`, `t_gate`, `committed_to`, `incumbent_label`) between engines for the same seed and mock policy.
+
+### Implementation order (the six steps)
+
+| Step | What | Where | Status |
+| --- | --- | --- | --- |
+| **①** | **Measure baseline + real 429 ceiling** — run a pilot slice at rising `--api-concurrency`, record where 429s begin. This single number is the provider ceiling that governs everything downstream. **No code change — a measurement run.** | pilot CLI | ⬜ **do before full pilot** (#2d) |
+| **②** | **Async client** — `AsyncOpenAICompatClient` (`AsyncOpenAI`); `complete` is a coroutine. Wire assembly (OpenRouter referer/title/cache headers, `extra_body.provider`) is byte-identical to the sync client. `AsyncRetryPolicy` is the exact async twin of `RetryPolicy` (same `max_attempts`, 2/4/8 s backoff, one code path for transport/rate-limit/API/parse failures — M03 lock; only `await asyncio.sleep` instead of blocking). SDK auto-retries stay off (`max_retries=0`). | `async_llm.py` | ✅ |
+| **③** | **Async run scheduler** — the `ThreadPoolExecutor` batch is replaced by `asyncio.gather` + `asyncio.Semaphore(run_concurrency)`. Each run stays a **sequential coroutine** (`await` per interaction) — the Markov chain is untouched; hundreds of runs simply share one event loop instead of threads. | `async_orchestration.py` | ✅ |
+| **④** | **Both player calls concurrent** — in one interaction the two non-committed player completions overlap via `asyncio.gather` instead of a `for player` loop. Committed agents short-circuit to `committed_to` with **zero** client calls (CM zero-API lock). ~2× per interaction when both players call the LLM. | `async_simulation.py` | ✅ |
+| **⑤** | **Multi-key / provider pool + failover** — `ProviderPool` is one `AsyncLLMClient` facade over N interchangeable endpoints for the **same model weights**. Each call picks the next endpoint not cooling down; a `RateLimitedError`/429 marks that endpoint on cooldown and re-raises so `AsyncRetryPolicy` retries on a sibling. This is the "anbieter-switching" lever — it is what actually **raises** the Step ① ceiling. | `async_llm.py::ProviderPool` | ✅ **scaffold, N=1 today** |
+| **⑥** | **Adaptive rate limiter** — `RateLimiter` is a global `asyncio.Semaphore` (the Step ① ceiling) plus a shared cooldown gate that honours `Retry-After`: one worker hitting a 429 backs **all** workers off together (`pause(seconds)`) instead of hammering a limited endpoint. `max_concurrency<=0` = unbounded (offline mock). **Live-API lock:** `ProviderPool.complete` catches **both** the pool's synthetic `RateLimitedError` **and** the SDK's real `openai.RateLimitError`, extracts `Retry-After` (`_retry_after_seconds`), cools the endpoint down, and calls `RateLimiter.pause()` before re-raising for retry — so a real 429 throttles the whole loop, not just the one call. | `async_llm.py::RateLimiter`/`ProviderPool` | ✅ |
+
+### Concurrency model — two independent knobs
+
+- **`--run-concurrency`** (`asyncio.Semaphore` over runs): how many *runs* share the event loop at once. Coarse bound; also the *only* bound for the offline mock (no rate limiter).
+- **`--api-concurrency`** (the `RateLimiter` inside one shared `ProviderPool`): the global ceiling on *in-flight API calls* across **all** runs. **Set this to the Step ① measured limit.** With multiple runs each firing two player calls, `run-concurrency × 2` can exceed the provider ceiling — the `RateLimiter` is what keeps total in-flight calls at or under `api-concurrency` regardless.
+
+### Determinism lock (why gathering is statistically neutral)
+
+Inside `make_async_interaction_step`, **all RNG draws happen synchronously, in the exact sync-engine order, before either LLM call is awaited**: the shared/per-player option shuffles, the `p1 = rng.choice(...)` agent pick and its neighbour pick, and the interaction-history appends. The two completions are independent — each player builds its prompt from its own memory and neither sees the other's current answer before the shared `update_dict`/`update_tracker` — so `asyncio.gather`-ing them cannot change any outcome. With the sync `MockLLMClient` wrapped in `AsyncClientAdapter` (its `complete` runs to completion with no intervening `await`), gathered calls resolve in submission order and the mock's RNG draw order is preserved → byte-identical results, which is exactly what the equivalence test pins.
+
+### Providers later (Step ⑤ extension — config-only)
+
+Today each real model resolves to **one** endpoint (`build_provider_pool` → one `AsyncOpenAICompatClient`). The extension point is `build_provider_pool` (in `async_orchestration.py`): to lift the ceiling later, resolve additional clients for the **same model weights** — more keys on one provider and/or more hosts of the same open-weight model — and pass them all to `ProviderPool([...], rate_limiter=...)`; nothing in the simulation, run, or orchestration layer changes. (A `ProviderPool.from_specs` convenience constructor that builds the endpoint list straight from a config block is the intended next addition — not yet implemented.)
+
+**Guardrail (Methods lock):** every endpoint in a pool must serve the **same model identity**. Never mix Llama/Qwen (or different weight releases) inside one pool — that would break per-run model provenance. Only spread the *same* weight state across endpoints. This is a caller-side contract, not enforced in code.
+
+### Run recipe
+
+```bash
+# ① Measure the ceiling first (single topology slice), sweeping api-concurrency:
+python run_pilot.py --model llama31 --topology complete --api-concurrency 4
+python run_pilot.py --model llama31 --topology complete --api-concurrency 8
+python run_pilot.py --model llama31 --topology complete --api-concurrency 16   # note where 429s start
+
+# First live pilot: start conservative, then scale up once stable:
+python run_pilot.py --model llama31 --run-concurrency 6 --api-concurrency 4
+
+# Full pilot with api-concurrency pinned to the measured ceiling (defaults are 12/8):
+python run_pilot.py --model llama31 --run-concurrency 12 --api-concurrency <measured>
+
+# Offline mock / reference engine (deterministic, no rate limiter):
+python run_pilot.py --model mock --engine sync --workers 4
+```
+
+### Tests
+
+`tests/test_async_llm.py` — `AsyncRetryPolicy` (first-attempt no-sleep, 3-attempt 2/4/8 s backoff order, mid-retry recovery); `RateLimiter` (semaphore bound, zero = unbounded); `ProviderPool` (round-robin across healthy endpoints, 429 → cooldown + re-raise → retry succeeds on sibling); `AsyncOpenAICompatClient` (missing-env-var guard, OpenRouter header/`extra_body` assembly, usage parsing); `AsyncClientAdapter` (wraps sync mock, preserves `model_id`). `tests/test_async_run_integration.py` — full async emergence completes with metadata; **sync↔async byte-identical** emergence and CM trajectories; all-committed Phase 2 makes zero client calls; **async batch ↔ sync `run_batch` identical `{run_id: status}` + resume-skips-all** (run-level scheduler lock). Plus the two ⑥ live-429 tests above. All green (17 async tests; the sync engine's existing suites are unchanged).
+
+### Deferred
+
+- **Step ①** measurement (the only pre-pilot blocker for the async path; checklist **#2d**).
+- **Step ⑤** real multi-endpoint fan-out — scaffold is live at N=1; adding endpoints is config-only and happens when keys/hosts are provisioned (post-pilot, per Doug "open-source first").
