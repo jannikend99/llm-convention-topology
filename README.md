@@ -103,8 +103,8 @@ git clone git@github.com:jannikend99/llm-convention-topology.git
 
 ## Status
 
-| **Pilot (2026-07-24)** | Step ① ✅ · `mistralnemo`/DeepInfra ✅ · [WORKING.md §5](WORKING.md) |
-| **Next** | **Pilot** — 72 runs (`emergence` → `cm`); then **Llama pilot?** (#1b) **or** Stanford main study |
+| **Pilot (2026-07-26)** | Step ① ✅ · `mistralnemo`/DeepInfra ✅ · **72/72 complete** · findings [WORKING.md §17](WORKING.md#17-infra-pilot--results--findings-mistralnemo-2026-07-24-26) |
+| **Next** | **Doug preview** (#4) · optional **Stanford HPC Llama pilot** (#1c) · **main study** (#3) |
 | **Thesis data** | **Main study** @ Stanford HPC — `llama31` (TODO **16a**) |
 
 ### Run Pilot (copy-paste)
@@ -123,6 +123,8 @@ python3 run_pilot.py --model mistralnemo --program cm \
 ```
 
 **Locks:** `max_tokens: 2000` · DeepInfra cap 200 concurrent → pin `--api-concurrency 192` · **do not** run emergence + cm in parallel at full concurrency (separate processes).
+
+**Background host (optional):** Hetzner `noric-production` (`78.47.27.226`) — verified SSH + `hcloud` access 2026-07-24. Run pilot in `tmux` on the server (API calls to DeepInfra; no local GPU). Emergence → cm chained with `&&` in one session. Full setup: [`WORKING.md` §16](WORKING.md#16-pilot-hosting-hetzner).
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Repository:** [github.com/jannikend99/llm-convention-topology](https://github.com/jannikend99/llm-convention-topology)  
 **Meta-repo path:** `Master Thesis/02_Topic/Experiment_Code/llm-convention-topology/`  
-**Last updated:** 2026-07-24 (Pilot strategy — §5; mistralnemo pilot → optional Llama pilot → Stanford main study)  
+**Last updated:** 2026-07-27 (two-program methodology §4; Ashery letters; pilot re-run §16–17)  
 **Language:** English (code + docs)
 
 ---
@@ -23,10 +23,10 @@ This document is the **single source of truth for thesis experiment code**. All 
 
 | Field | Value |
 | --- | --- |
-| Stage | Offline build ✅ · C-05 ✅ · Ashery-split code ✅ · **async engine ✅** (§15) · **pre-pilot proofs complete** (emergence 8/8 · CM smoke · k=6 flip) · **Step ① ✅** · **infra provider (#0b) ✅** |
-| Methods LaTeX | Locked prose still sequential in places — **sync after pilot** (Ashery split already in code) |
-| Next gate | **Pilot** (`mistralnemo`) → review → **optional Llama pilot?** (#1b) → **main study @ Stanford HPC** |
-| Pilot (`mistralnemo`) | **Ready to run** — recipe §5; **not Methods/thesis data**; **not started** |
+| Stage | Offline build ✅ · C-05 ✅ · Ashery-split code ✅ · **async engine ✅** (§15) · **pre-pilot proofs complete** (emergence 8/8 · CM smoke · k=6 flip) · **Step ① ✅** · **infra provider (#0b) ✅** · **infra pilot (#3) ✅** (§17) |
+| Methods LaTeX | **Synced 2026-08-06** to two-program design (TODO D4 closed); model strings still open (D1) |
+| Next gate | **Doug preview (#4)** → optional **Stanford HPC Llama pilot (#1c)** → **main study @ Stanford HPC (#3)** · API Llama pilot (#1b) ❌ |
+| Pilot (`mistralnemo`) | **Complete 2026-07-26** — 72/72 runs, 0 failed; **not Methods/thesis data** (§17) |
 | Main study | Code ready; **thesis confirmatory runs** planned Stanford HPC (TODO **16a**) |
 
 ### Next steps (live checklist)
@@ -38,12 +38,12 @@ This document is the **single source of truth for thesis experiment code**. All 
 | **2c** | **Async engine (A1/A2/A3/A6 + ⑤ pool scaffold + ⑥ adaptive limiter)** — parallel p1+p2, global API gate, run-level pool | ✅ **done 2026-07-24** | Async is now the **default** engine (`--engine async`). See §15 · meta `TODO.md` **#0** / **#16b** |
 | **2d** | **Step ① — measure baseline + real 429 ceiling** | ✅ **done 2026-07-24** | `mistralnemo` / DeepInfra direct: **0× 429** at 4→192; **200/200 OK** at 192; hard cap **200** concurrent/model. Production pin: **`--api-concurrency 192`** (§5 · §15) |
 | **2e** | **Provider setup (pilot path)** | ✅ **done 2026-07-24** | `mistralnemo` registry + `DEEPINFRA_API_KEY`; smoke ✅; `max_tokens: 2000`. Multi-endpoint `ProviderPool` N>1 **deferred** |
-| 3 | **Pilot** (`mistralnemo`) | ⬜ **next — user-run** | 72 runs, sequential emergence → cm, 64/192. Same protocol as thesis design; **only model differs**. **Not Methods chapter data** |
-| 3b | Review pilot + `analyze.py --model mistralnemo` | ⬜ after **#3** | Exploratory; inform topology direction + Stanford planning |
-| 3c | **Optional Llama pilot?** — cost estimate + go/no-go (TODO **#1b**) | ⬜ after **#3b** | ~$25–80 for 72 API runs; **skip → Stanford main study** |
+| 3 | **Pilot** (`mistralnemo`, Ashery letters) | 🔄 **running 2026-07-27** — Hetzner `tmux pilot`; 72-run grid | §16 · session log |
+| 3b | Review pilot + `analyze.py --model mistralnemo` | ✅ **done 2026-08-06** | rsync from Hetzner; `outputs/mistralnemo/` H1–H4 + eligibility (exploratory; not Methods data) |
+| 3c | **Optional Llama pilot @ Stanford HPC** (was API #1b) | ⬜ with / before main study | API path **declined 2026-08-06** (cost); small self-hosted `llama31` grid optional before full **#3** |
 | 4 | Stanford HPC + main study (`llama31`) | ⬜ after **#3c** | TODO **16a** — default thesis data path |
 | 5 | Optional Doug preview (directional) | ⬜ | Not confirmatory claims |
-| 6 | Theory/Methods LaTeX sync (split protocol) | ⬜ | TODO **D4**; Methods describes **main study**, not `mistralnemo` pilot runs |
+| 6 | Theory/Methods LaTeX sync (split protocol) | ✅ **2026-08-06** | TODO **D4** closed; Methods describes **main study**, not `mistralnemo` pilot runs |
 
 ### Scaling & infra (backlog — TODO #16)
 
@@ -77,7 +77,7 @@ This document is the **single source of truth for thesis experiment code**. All 
 | **Protocol** | Identical (Centola-3, gate 0.95, CM k∈1…6, seeds) | Identical |
 | **In Methods chapter?** | **No** — exploratory / pipeline only | **Yes** — confirmatory |
 
-**After pilot:** optional **Llama API pilot** (same 72-run grid, `llama31`) — **decision after cost estimate** (TODO **#1b**, ~$25–80). **Default if skip:** main study @ **Stanford HPC** (self-hosted Llama; no per-token API).
+**After pilot:** **Llama API pilot declined** (TODO **#1b**, cost). **Optional:** small Llama grid on **Stanford HPC** (TODO **#1c**) before full main study. **Default:** main study @ **Stanford HPC** (self-hosted Llama; no per-token API).
 
 **Stanford handoff:** After pilot, expected code changes = `config.yaml` registry (cluster endpoint) + env vars — simulation, orchestration, analysis unchanged.
 
@@ -87,7 +87,7 @@ This document is the **single source of truth for thesis experiment code**. All 
 | --- | --- | --- | --- | --- |
 | 0 | WORKING.md fully specified (this doc) | Jannik (agent-drafted) | ✅ complete | 2026-07-13 |
 | 1 | LLM runner + one dry-run (mixing, k=1, Llama) | Jannik (agent-drafted) | ⚠ code complete offline (A+B+C-01…C-04); real llama31 smoke ⏸ C-05 pending §13 #1/#3 | 2026-07-14 |
-| 2 | Full run unit (Phase 1→2, logging, flip coding) | Jannik (agent-drafted) | ✅ complete (B + F-01…F-03) | 2026-07-14 |
+| 2 | Full run unit (emergence + CM programs, logging, flip coding) | Jannik (agent-drafted) | ✅ complete (B + F-01…F-03) | 2026-07-14 |
 | 3 | Pilot orchestration (12 attempted / topology / model) | Jannik (agent-drafted) | ✅ complete (D), verified live on mocked 36-run batch | 2026-07-14 |
 | 4 | Live analytics usable during pilot | Jannik (agent-drafted) | ✅ complete (E: Rich + Streamlit + notebook) | 2026-07-14 |
 | 5 | Analysis scripts H1–H3b + H4 descriptive | Jannik (agent-drafted) | ✅ complete (F), verified live via `analyze.py --all --model mock` | 2026-07-14 |
@@ -119,7 +119,8 @@ This document is the **single source of truth for thesis experiment code**. All 
 | N | 24 |
 | Topologies | `complete` (mixing), `random_regular` deg 4, `lattice` (1D ring, nearest + next-nearest) |
 | Memory H | 5 |
-| Label pool W | 2 (`Q`, `M`) |
+| **Emergence label pool (W=10)** | **`Q, M, X, Y, F, J, P, R, C, D`** — Ashery plotter set only (**locked 2026-07-27**; never `A–J`) |
+| **CM label pool (W=2)** | `Q`, `M` |
 | Payoffs | +100 match, −50 mismatch |
 | Temperature | 0.5 |
 | Gate window | 3N = 72 interactions |
@@ -129,9 +130,63 @@ This document is the **single source of truth for thesis experiment code**. All 
 | CM injection | `swap` mode; k ∈ {1,2,3,4,5,6} |
 | Flip (primary) | ≥95%/3N **and** modal label = `committed_to` |
 | Non-flip | Single category; right-censor at 1000 |
-| Run unit | Ashery split: emergence (W=10 organic) ‖ CM (W=2 prepared) |
+| Run unit | Ashery split: **Study 1 emergence** (W=10 organic) ‖ **Study 2 prepared CM** (W=2) — see [§4](#4-methodology-architecture-canonical) |
 | API retries | 3× then `run_status = failed` |
 | Models (provisional) | Llama-3.1-70B (primary), Qwen2.5-72B, GPT-5.4, Claude 5.5 |
+
+---
+
+## 4. Methodology architecture (canonical)
+
+**Locked 2026-07-27** (author decision, post-pilot). This section is the **code + experiment SSOT**. **LaTeX sync closed 2026-08-06** (`03_Methods.tex`, Appendix, Theory method passages — TODO **D4**).
+
+### 4.1 Two studies, not one sequential run
+
+The thesis empirical program is **two independent between-run experiments** per model (Ashery-style split; implemented 2026-07-21). They share Centola-3 topologies and the Ashery LLM protocol, but **do not** chain organic Phase 1 into CM on the same trajectory.
+
+| | **Study 1 — Emergence** | **Study 2 — Committed minority (CM)** |
+| --- | --- | --- |
+| **CLI** | `run_pilot.py` / `run_main.py --program emergence` | `… --program cm` |
+| **Question** | Does a global convention emerge under topology X? How often / how fast? | Given a **prepared** consensus, does a minority of size k flip it? |
+| **Start state** | Empty histories, organic play | **Prepared population** (`make_prepared_population`): every agent’s memory filled with incumbent label |
+| **Label pool W** | **10** — `Q,M,X,Y,F,J,P,R,C,D` | **2** — `Q,M` |
+| **Runs until** | Stability gate (≥95%/3N) or Phase 1 cap **5000** | Fixed **1000** post-injection interactions |
+| **IV** | Topology ∈ {mixing, random_regular, lattice} | Topology × CM size **k ∈ {1…6}** |
+| **Unit of analysis** | One emergence run = one (model × topology × seed) | One CM run = one (model × topology × k × seed) |
+| **Primary DVs** | Gate pass/fail, `dominant_share`, fragmentation (H1/H2) | `flip`, time-to-flip, k-curve (H3) |
+| **Human benchmark** | Centola (2015) Centola-3 emergence patterns | Centola (2018) mixing CM + Ashery (2025) LLM CM curves — **prepared** start, not organic→perturb continuity |
+
+**Pilot orchestration note:** Hetzner runs `emergence && cm` in one `tmux` session for convenience only. That is **operational sequencing**, not a scientific link between seeds across programs.
+
+### 4.2 Run counts (how N is chosen)
+
+| Stage | Study 1 (emergence) | Study 2 (CM) |
+| --- | --- | --- |
+| **Pilot** | **12 attempted** per topology (fixed grid) | **12 attempted** per topology; k assigned **cyclically** by `seed_index` → **2 runs per (topology × k)** cell |
+| **Main study** | Target **gate-passed** runs per topology (mixing 15–20; lattice/random 8–10) via `run_main.py --program emergence` | Target **completed** runs per **(topology × k)** cell (same numeric targets) via `run_main.py --program cm` |
+| **H1/H2 input** | All **attempted** emergence runs per topology (incl. censored) | — |
+| **H3 input** | — | All **completed** CM runs (`program=cm`; `eligibility=1` = completed, not organic gate) |
+
+Main-study targeting still uses `main_eligible_targets` + `attempted_cap_factor` in `config.yaml`; semantics differ by program (gate-pass vs. completed). **TODO D5:** revisit whether fixed-N per cell is simpler than adaptive caps.
+
+### 4.3 Alignment map — author intent vs. code vs. docs
+
+| Topic | **Canonical (author, 2026-07-27)** | **Pilot / main code today** | **LaTeX (`03_Methods.tex` + Appendix + Theory)** |
+| --- | --- | --- | --- |
+| **Architecture** | Two studies: emergence ‖ prepared CM | ✅ `PROGRAM_EMERGENCE` / `PROGRAM_CM`; separate grids, IDs, pickles | ✅ Two independent programs (synced 2026-08-06) |
+| **W (label pool)** | W=10 emergence; W=2 CM | ✅ `options_emergence` / `options_cm` in `config.yaml` | ✅ Program-specific pools |
+| **CM incumbent** | By construction: `options_cm[0]` (= Q); minority pushes M | ✅ `prepared.py` + `incumbent_index: 0` | ✅ Prepared Q / committed M |
+| **Link emergence → CM** | **None** — independent run sets | ✅ No shared seed requirement across programs | ✅ Independent Study 1 / Study 2 |
+| **CM analysis scope** | All completed CM runs | ✅ CM `eligibility=1` when `run_status=completed` | ✅ Completed-run floor for H3 |
+| **Pilot grid** | N per topology (emergence); N per (topology × k) (CM) | ⚠️ Fixed **12/topology**; CM k via **cyclic** seed → 2/cell (preview only) | — (pilot not Methods data) |
+| **Main grid** | N per topology; N per (topology × k) | ⚠️ `run_main.py` has separate `--program` targets but **shared** `main_eligible_targets` table — emergence rows are per-topology, CM rows per (topology × k) | ✅ Appendix: gate-reached (Study 1) / completed (Study 2) targets |
+| **Analysis** | H1/H2 on `program=emergence`; H3 on `program=cm` | ✅ `analysis/common.py` branches on `program` | ✅ Study 1 / Study 2 DV framing |
+| **Ashery comparability** | Emergence Fig. 1 (W=10) + CM prepared (W=2) | ✅ Matches public `runner.py` split | ✅ Stated in Methods |
+| **Centola CM comparability** | Pattern comparison on **prepared** populations | ✅ Ashery path; Discussion caveat already drafted | ✅ Prepared CM + Centola (2018) pattern benchmark |
+
+**Code reference:** [`docs/sessions/2026-07-21_ashery_split_design.md`](docs/sessions/2026-07-21_ashery_split_design.md) · `convention_topology/run.py` · `prepared.py` · `orchestration.py`.
+
+**Prose status:** TODO **D4** closed 2026-08-06. Do **not** describe `mistralnemo` pilot runs as thesis Methods data. Model identifier locks remain TODO **D1**.
 
 ---
 
@@ -326,7 +381,12 @@ Order rationale (matches user priority): mock layer first so everything downstre
 
 ### Factorial grid
 
-Full design space per model: **topology ∈ {complete, random_regular, lattice} × k ∈ {1…6} × seeds**. Every run is sequential Phase 1→2 with its own k (M03 run-unit lock); `graph_seed` and `run_seed` derived deterministically from `(topology, k, seed_index)` via a fixed base seed so the grid is reproducible.
+Full design space per model, **split across two programs**:
+
+- **Study 1:** topology ∈ {complete, random_regular, lattice} × seeds (organic emergence; `cm_k=0`).
+- **Study 2:** topology × **k ∈ {1…6}** × seeds (prepared CM; independent of Study 1 seeds).
+
+`graph_seed` and `run_seed` are derived deterministically from `(topology, cm_k, seed_index)` via `run.base_seed` (`config.py::derive_seeds`). **There is no sequential Phase 1→2 on one trajectory** (supersedes pre-2026-07-21 `execute_run` sequential unit).
 
 ### Pilot grid (`mistralnemo`)
 
@@ -343,13 +403,17 @@ Per program: **12 seeds × 3 topologies** (`complete`, `random_regular`, `lattic
 
 Doug email 2026-07-20: open-source first — directional preview from pilot may support early share; confirmatory results from **main study**.
 
-### Main study targets (per model — M01 locks)
+### Main study targets (per model — two programs)
 
-| Stratum | Target | Runner behavior |
-| --- | --- | --- |
-| Mixing, per k cell (6 cells) | **15–20 eligible** Phase 2 runs | `run_main.py` keeps launching seeds in a cell until eligible count ≥ target or attempted cap (default 3× target) reached |
-| Lattice / random, per (topology × k) cell | **8–10 eligible** (conditional on pilot eligibility — Contingency Option A default) | Same targeting; cells may be demoted to exploratory after pilot |
-| H1/H2 | All attempted Phase 1 runs per topology (incl. censored) | No extra runs needed — pooled from the above |
+Run **`run_main.py` twice** (or once per program in production): `--program emergence` then `--program cm`.
+
+| Program | Stratum | Target | Runner behavior |
+| --- | --- | --- | --- |
+| **emergence** | Per topology | **15–20 gate-passed** (mixing); **8–10** (lattice/random) | `emergence_cell_targets` — seeds until gate-pass count ≥ target or attempted cap |
+| **cm** | Per (topology × k) cell | Same numeric targets | `cm_cell_targets` — seeds until **completed** count ≥ target or attempted cap |
+| **H1/H2** | — | All **attempted** emergence runs per topology | From emergence program only (incl. censored) |
+
+`attempted_cap = target_min × attempted_cap_factor` (default factor **3**). See [§4.2](#42-run-counts-how-n-is-chosen) and TODO **D5**.
 
 ### CLI (copy-paste ready)
 
@@ -402,6 +466,8 @@ python3 run_pilot.py --model mock --engine sync --workers 4
 | Mixing Phase 2 eligible / CM level k | 15–20 |
 | Lattice/random eligible / (topology × k) cell | 8–10 |
 | H1/H2 | Pool all attempted Phase 1 per topology |
+
+**Open (deferred — TODO D5):** Revisit **seed index / runs per model** after pilot review, before Stanford main study. Current runner: adaptive targeting (`run_main.py` → eligible target or `attempted_cap = target_min × attempted_cap_factor`). Alternatives to evaluate: fixed attempted per topology (Ashery-near ~40 emergence only), fixed per CM cell, or scope-cut (fewer k / mixing-only confirmatory). **Not blocking pilot analysis (#3b).** → [TODO.md D5](../../../../TODO.md)
 
 ---
 
@@ -473,6 +539,8 @@ Entry: `python analyze.py --h1|--h2|--h3a|--h3b|--h4|--cross-model|--all --model
 | Cross-model robustness | `analysis/cross_model.py` | Descriptive comparison of dominant share, flip curves, critical mass across the four models; no pooled inference | all models' outputs | `outputs/cross_model.json` + comparison figures |
 | Reporting | `analysis/common.py --eligibility` | Attempted / eligible / censored / failed counts by topology × model (Phase 2 denominators, Results table) | sidecars | `outputs/{model}/eligibility.csv` |
 | Sensitivity | inside `h3a.py --sensitivity-50` | 95% vs. 50% flip-indicator agreement (mixing) → Appendix `tab:appendix-flip-agreement` | eligible mixing runs | `flip_agreement.csv` |
+
+**Planned (main study, exploratory — TODO D7):** Qualitative pass on logged **chain-of-thought / full completions** (events stream + pickles where raw text is stored): stratified sample by `program`, topology, model, and outcome (gate / censor / flip / non-flip); code reasoning themes (conformity, label invention, minority commitment, parsing failures). Complements quantitative DVs; not confirmatory. Scope and Methods wording after first main-study batch.
 
 **Stats stack (locked in `requirements.txt`, pinned at Phase F):** `numpy`, `pandas`, `scipy` (t/Wilcoxon/Mann–Whitney/χ²), `statsmodels` (logistic + LR tests), `pygam` (H3a spline), `matplotlib` (figures), plus existing `networkx`, `PyYAML`, `munch`; runtime: `openai` (OpenAI-compatible client), `rich` (monitor), `python-dotenv`.
 
@@ -551,7 +619,9 @@ params:
   convergence_threshold: 0.95
   rewards_set: [[-50, 100]]
   memory_size_set: [5]
-  options_set: [[Q, M]]
+  options_emergence: [Q, M, X, Y, F, J, P, R, C, D]   # LOCK — Ashery only (§17)
+  options_cm: [Q, M]
+  options_set: [[Q, M]]              # legacy; CM uses options_cm
 run:
   base_seed: 20260713               # grid-seed derivation root
   checkpoint_every: 50
@@ -628,6 +698,12 @@ Retired Ashery keys: `network.alpha/beta/erdos_p` (scale-free/ER), `params.initi
 | 2026-07-24 — **Async engine (checklist #2c ✅)** | New default parallelisation path — steps ②–⑥ of §15. `async_llm.py` (`AsyncOpenAICompatClient`, `AsyncRetryPolicy` — exact async twin of `RetryPolicy`; `RateLimiter` global ceiling + `Retry-After` cooldown ⑥; `ProviderPool` round-robin + 429 failover ⑤ scaffold, N=1 today; `AsyncClientAdapter` wraps the sync `MockLLMClient`). `async_simulation.py` (`make_async_interaction_step` — RNG drained in sync order, then both player calls via `asyncio.gather` ④). `async_run.py` (`execute_run_async` — each run stays a sequential coroutine; persistence/gate/resume/checkpoint reused verbatim from `run.py`). `async_orchestration.py` (`run_pilot_async`/`run_main_study_async` — `asyncio.gather` + `Semaphore` over runs ③, shared `ProviderPool`/`RateLimiter`). `run_pilot.py`/`run_main.py` default to `--engine async` with `--run-concurrency`/`--api-concurrency`; sync `--workers` retained as the offline mock/reference engine only. **Determinism lock verified:** `tests/test_async_run_integration.py` asserts byte-identical emergence + CM trajectories vs. the sync engine for the same seed/mock. Tests: +14 (`test_async_llm.py`, `test_async_run_integration.py`); full async subsuite green (retry/backoff order, rate-limiter bound, pool round-robin + failover, sync↔async equivalence, CM zero-API short-circuit). **No legacy async fallback** (per instruction). **Providers later:** multi-key/multi-host fan-out is config-only via `build_provider_pool` (pass N clients to `ProviderPool`; `from_specs` constructor is the planned convenience, not yet built) — no simulation change. Next: **Step ① 429-ceiling measurement** (#2d) to set `--api-concurrency`. |
 | 2026-07-24 — **Async review remediation** (reviewer #2/#3) | **#2 live-429 gap fixed:** `ProviderPool.complete` now catches the SDK's real `openai.RateLimitError` (not only the synthetic `RateLimitedError`) → `_retry_after_seconds` reads `Retry-After`, endpoint cooldown + global `RateLimiter.pause()` fire before re-raise, so ⑥ throttles the whole loop on live 429s instead of every worker retrying independently. **#3 run-level test added:** `test_async_batch_matches_sync_batch_and_resumes` asserts `run_batch_async` ↔ sync `run_batch` identical `{run_id: status}` for the mock and that a second pass skips all (resume). +3 async tests (17 total, all green). #1 (Step ① measurement) stays the user's pre-pilot run; #4 (async↔sync duplication) accepted, guarded by the equivalence tests; #5 (start `--run-concurrency 6 --api-concurrency 4`, then scale) folded into the §15 run recipe. Defaults left at 12/8 (documented as optimistic). |
 | 2026-07-24 — **Pilot strategy (#3 scope lock)** | 72-run pilot on `mistralnemo` (same protocol; model only differs); excluded from Methods. **After pilot:** optional Llama API pilot (**#1b** cost + decision) **or** Stanford main study (`llama31`). §5 + `TODO.md` updated. |
+| 2026-07-24 — **Hetzner pilot host verified** | `hcloud` + SSH to `noric-production` (`78.47.27.226`, CX33, Ubuntu 24.04) ✅. Shared with Noric Docker stack; sufficient headroom for API-orchestrated pilot. Documented **§16** — `tmux` recommended, `rsync` deploy, DeepInfra API (no local GPU). |
+| 2026-07-24 — **Hetzner pilot launched** | Deployed to `/opt/thesis-pilot/llm-convention-topology` (rsync + venv). `tmux` session `pilot`: emergence → cm chained (`&&`), 64/192. Log: `logs/pilot-full.log`. Noric unaffected. |
+| 2026-07-26 — **Infra pilot complete** (`mistralnemo`) | 72/72 on Hetzner, 0 failed (~36 h wall-clock). Emergence 7/36 eligible; CM 36/36 completed, **0/36 flip**. Label-pool confound vs Llama proof documented **§17**. |
+| 2026-07-27 — **Ashery W=10 letters locked** | `config.yaml` `options_emergence` → `[Q,M,X,Y,F,J,P,R,C,D]` permanently; **never A–J** (design locks + §17). Mistral pilot data remain valid for infra only, not comparable to Ashery/Llama emergence without pool caveat. |
+| 2026-07-27 — **Two-program methodology locked (§4)** | Author + code aligned: **Study 1 emergence** (W=10 organic) ‖ **Study 2 prepared CM** (W=2); independent run sets per model × topology × seed (CM also × k). Documents drift vs. `03_Methods.tex` sequential prose (TODO **D4**). |
+| 2026-07-27 — **Mistral pilot re-run (Ashery letters)** | Hetzner `tmux` session `pilot` restarted: rsync + `options_emergence` verified on server; prior A–J run archived → `archive/pilot_A-J_20260726/`; fresh 72-run grid (12 seeds × 3 topologies × emergence‖cm), 64/192, log `logs/pilot-full.log`. **Not Methods data** — infra + directional preview with correct label pool. |
 
 ---
 
@@ -688,3 +764,230 @@ python3 run_pilot.py --model mock --engine sync --workers 4
 ### Deferred
 
 - **Step ⑤** real multi-endpoint fan-out — scaffold is live at N=1; adding endpoints is config-only (optional DeepInfra limit increase to 400; not required at 192 cap).
+
+---
+
+## 16. Pilot hosting (Hetzner)
+
+**Verified 2026-07-24:** CLI + SSH access from the dev Mac work. Use this host to run the 72-run `mistralnemo` pilot in the background so the laptop does not need to stay on.
+
+### Access
+
+| Item | Value |
+| --- | --- |
+| Provider | Hetzner Cloud |
+| CLI | `hcloud` v1.62+ · context `noric-production` · config `~/.config/hcloud/cli.toml` |
+| Server | `noric-production` · CX33 (4 vCPU, 8 GB RAM, 80 GB disk, **no GPU**) |
+| Location | `nbg1` (Nuremberg) |
+| IPv4 | `78.47.27.226` |
+| OS | Ubuntu 24.04 |
+| SSH | `ssh root@78.47.27.226` (key auth ✅) |
+
+**Shared host:** the server also runs the Noric production stack (`/opt/noric`, Docker: frontend/backend/worker/Caddy + Netdata). ~5–6 GB RAM free under normal load — sufficient for the pilot orchestrator (I/O-bound API client, not local inference).
+
+### Why this works (no local model)
+
+The `mistralnemo` pilot calls **DeepInfra's hosted API** (`config.yaml` → `base_url: https://api.deepinfra.com/v1/openai`). The Hetzner box only runs Python async orchestration + logging; **Mistral Nemo is not loaded on the VPS**. A GPU is not required. Cost is DeepInfra API usage (~$1–3 for 72 runs), not Hetzner compute.
+
+### Background-run options
+
+| Option | Effort | Robustness | When to use |
+| --- | --- | --- | --- |
+| **A — `tmux` (recommended first)** | Low | Good | First pilot; detach/reattach, resume built-in |
+| **B — `systemd` oneshot service** | Medium | Best | Unattended overnight; auto-log to journald |
+| **C — `nohup` + log file** | Minimal | OK | Quick one-off if tmux unavailable |
+| **D — Docker** | Higher | Good | Only if you want full env isolation from Noric |
+
+**Not recommended on this host:** self-hosting Mistral Nemo locally (no GPU; contradicts the locked DeepInfra pilot path).
+
+### One-time server setup
+
+Deploy code + secrets (GitHub SSH on the server is **not** configured yet — rsync from the Mac is simplest):
+
+```bash
+# From Mac — sync repo (excludes data/logs/.env by default; copy .env separately)
+rsync -avz --exclude data --exclude logs --exclude .venv --exclude __pycache__ \
+  "/Users/jannikendress/Master Thesis/02_Topic/Experiment_Code/llm-convention-topology/" \
+  root@78.47.27.226:/opt/thesis-pilot/llm-convention-topology/
+
+# Copy API key (never commit)
+scp "/Users/jannikendress/Master Thesis/02_Topic/Experiment_Code/llm-convention-topology/.env" \
+  root@78.47.27.226:/opt/thesis-pilot/llm-convention-topology/.env
+
+# On server — venv + deps (once; needs python3.12-venv on fresh Ubuntu)
+ssh root@78.47.27.226
+apt-get install -y python3.12-venv   # once, if venv creation fails
+cd /opt/thesis-pilot/llm-convention-topology
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python3 -m unittest discover -s tests -q   # optional smoke
+```
+
+### Option A — tmux (recommended)
+
+**Set-and-forget:** one shell chains emergence → cm (`&&`); CM starts only after emergence finishes. Safe alongside Noric Docker (separate process, own directory `/opt/thesis-pilot/`, no port use).
+
+```bash
+ssh root@78.47.27.226
+cd /opt/thesis-pilot/llm-convention-topology && source .venv/bin/activate
+tmux new -s pilot
+
+# Inside tmux — full 72-run pilot (36 emergence, then 36 cm)
+mkdir -p logs
+python3 run_pilot.py --model mistralnemo --program emergence \
+  --run-concurrency 64 --api-concurrency 192 && \
+python3 run_pilot.py --model mistralnemo --program cm \
+  --run-concurrency 64 --api-concurrency 192 \
+  2>&1 | tee logs/pilot-full.log
+
+# Detach: Ctrl+B, then D  ·  Reattach: tmux attach -t pilot
+```
+
+**Detached start (from Mac, no interactive tmux):**
+
+```bash
+ssh root@78.47.27.226 'tmux new-session -d -s pilot "bash -lc '\''set -e; cd /opt/thesis-pilot/llm-convention-topology && source .venv/bin/activate && mkdir -p logs && { python3 run_pilot.py --model mistralnemo --program emergence --run-concurrency 64 --api-concurrency 192 && python3 run_pilot.py --model mistralnemo --program cm --run-concurrency 64 --api-concurrency 192; } 2>&1 | tee logs/pilot-full.log'\''"'
+```
+
+**Resume:** re-run the same chained command after interruption — `run_pilot.py` skips `completed`/`censored` runs by default.
+
+### Option B — systemd (unattended)
+
+Create `/etc/systemd/system/thesis-pilot-emergence.service` (and a second unit for `cm`, or chain with `ExecStartPost`). `Type=oneshot`, `WorkingDirectory=/opt/thesis-pilot/llm-convention-topology`, `EnvironmentFile=.../.env`, log via `StandardOutput=journal`. Start with `systemctl start thesis-pilot-emergence`; monitor with `journalctl -fu thesis-pilot-emergence`.
+
+### Pull results back to Mac
+
+```bash
+rsync -avz root@78.47.27.226:/opt/thesis-pilot/llm-convention-topology/data/ \
+  "/Users/jannikendress/Master Thesis/02_Topic/Experiment_Code/llm-convention-topology/data/"
+rsync -avz root@78.47.27.226:/opt/thesis-pilot/llm-convention-topology/logs/ \
+  "/Users/jannikendress/Master Thesis/02_Topic/Experiment_Code/llm-convention-topology/data/../logs/"
+```
+
+Then locally: `python3 analyze.py --all --model mistralnemo`.
+
+### Monitoring while detached
+
+- **Progress:** `ssh root@78.47.27.226 'tail -20 /opt/thesis-pilot/llm-convention-topology/logs/pilot-emergence.log'`
+- **Run counts:** count `completed` in sidecars under `data/runs/mistralnemo/`
+- **Live dashboard (optional):** SSH tunnel `ssh -L 8501:localhost:8501 root@78.47.27.226` + `streamlit run live/web.py` in a second tmux pane (not required for batch completion)
+
+### Guardrails
+
+- Run **emergence → cm sequentially** (shared DeepInfra cap 200; two full-concurrency processes would exceed it).
+- Keep Noric stack untouched (`/opt/noric`); thesis code lives under `/opt/thesis-pilot/`.
+- Pilot output is **not Methods chapter data** (§5 scope lock).
+- Do not commit `.env` or sync API keys into git.
+
+---
+
+## 17. Infra pilot — results & findings (`mistralnemo`, 2026-07-24–26)
+
+**Purpose:** Pipeline + directional preview before Stanford main study. **Excluded from Methods chapter** (§5 scope lock). **Not** confirmatory evidence for H1–H3b.
+
+**Run:** Hetzner `noric-production` (§16) · `tmux` session `pilot` · DeepInfra `mistralnemo` · `--run-concurrency 64 --api-concurrency 192` · emergence → cm chained (`&&`) · log `logs/pilot-full.log` on server.
+
+### Run summary
+
+| Metric | Value |
+| --- | --- |
+| Total runs | **72 / 72** |
+| `failed` | **0** |
+| Wall-clock | ~**36 h** (started 2026-07-24 15:37 CEST) |
+| Programs | 36 emergence + 36 cm |
+
+### Emergence (36 runs — organic Phase 1, W=10)
+
+| Status | Count | Notes |
+| --- | ---: | --- |
+| `completed` (gate passed, `eligibility = 1`) | **7** | 19 % |
+| `censored` (5000 cap, no gate) | **29** | 81 % |
+
+**By topology (12 seeds each):**
+
+| Topology | Eligible | Censored |
+| --- | ---: | ---: |
+| `complete` (mixing) | 3 | 9 |
+| `random_regular` | 3 | 9 |
+| `lattice` | 1 | 11 |
+
+**Pattern:** Runs often show high **dominant share** (~0.88–0.94 on censored mixing runs) but **rolling dyadic success stays below the 0.95 / 3N gate** — partial coordination without stability-gate eligibility.
+
+### CM (36 runs — prepared W=2, Phase 2 horizon 1000)
+
+| Metric | Value |
+| --- | ---: |
+| `completed` | **36 / 36** |
+| `eligible` (Phase 2) | **36** |
+| **Flip** (primary DV) | **0 / 36** (0 %) |
+
+CM protocol and persistence validated; **no committed-minority flip** at any k ∈ {1…6} on any topology with this model.
+
+### Label pool — design lock (2026-07-27)
+
+**From all future runs onward:** emergence **always** uses the **Ashery W=10 letter set** — no exceptions.
+
+```yaml
+options_emergence: [Q, M, X, Y, F, J, P, R, C, D]
+options_cm: [Q, M]
+```
+
+| Pool | Letters | Rationale |
+| --- | --- | --- |
+| **Emergence (W=10)** | `Q, M, X, Y, F, J, P, R, C, D` | Ashery plotter / Fig. 1 set; **no `A`** (avoids A-primacy — see proof log D7) |
+| **CM (W=2)** | `Q`, `M` | Ashery CM / bias experiments |
+
+**Do not use** `A, B, C, …, J` — used only in the mistral infra pilot by mistake (§17 confound).
+
+**Locked in:** `config.yaml` · design locks table · all `run_pilot.py` / `run_main.py` / `run_one.py` invocations unless explicitly noted as a deprecated replay of mistral pilot artifacts.
+
+### Label-pool confound (emergence) — historical note
+
+| Run | `options_emergence` (W=10) | Document |
+| --- | --- | --- |
+| **Llama pre-pilot proof** (mixing, 8 seeds) | **Ashery set:** `Q, M, X, Y, F, J, P, R, C, D` | [`docs/sessions/2026-07-21_together_ashery_proof.md`](docs/sessions/2026-07-21_together_ashery_proof.md) §D7, §7.2 |
+| **This infra pilot** (`mistralnemo`) | **`A–J`** (`config.yaml` at deploy time) | This section |
+
+The mistral pilot was deployed with `params.options_emergence: [A, B, C, D, E, F, G, H, I, J]` — **not** the Ashery letter set. All three mistral mixing runs that passed the gate had incumbent **`A`** (A-primacy risk). **Corrected 2026-07-27** — see **Label pool — design lock** above.
+
+Do **not** compare mistral pilot emergence winners or eligibility rates directly to Ashery Fig. 1 or to the Llama 8-seed proof without noting this pool mismatch.
+
+### Comparison: Llama mixing proof vs. mistral pilot (mixing only)
+
+Reference: [`docs/sessions/2026-07-21_together_ashery_proof.md`](docs/sessions/2026-07-21_together_ashery_proof.md) §7.2–7.4 — Together `meta-llama/Llama-3.3-70B-Instruct-Turbo` (shorthand `llama31`), **Ashery W=10 letters**, same gate **0.95 / 3N**.
+
+| | Llama proof (mixing) | Mistral pilot (mixing) |
+| --- | --- | --- |
+| n (emergence) | 8 seeds | 12 seeds |
+| Gate passed | **8 / 8 (100 %)** | **3 / 12 (25 %)** |
+| `t_gate` (eligible) | 143–335 | 1500–4546 |
+| CM flip (k=6 demo) | **flip = 1** @ t ≈ 292 | — |
+| CM grid flip | — | **0 / 12** per topology |
+
+**Overlapping seeds** (8 seeds in both mixing cohorts): Llama gated **8/8**; mistral gated **3/8** on the same `run_seed` indices — same topology and gate, different model (and label pool on mistral side).
+
+| Seed suffix | Llama `t_gate` | Mistral |
+| --- | ---: | --- |
+| s3421927570 | 143 ✅ | censored |
+| s90557159 | 182 ✅ | censored |
+| s2276544829 | 228 ✅ | censored |
+| s601132211 | 236 ✅ | censored |
+| s3161562569 | 237 ✅ | gated (t ≈ 1500) |
+| s1827656529 | 292 ✅ | gated (t ≈ 1591) |
+| s2900733621 | 324 ✅ | gated (t ≈ 4546) |
+| s67336590 | 335 ✅ | censored (dom. share ≈ 0.91) |
+
+### Interpretation (locked for thesis planning)
+
+1. **Infrastructure ✅** — async engine, DeepInfra at 192 concurrency, Hetzner unattended batch, resume, 0 API hard-failures across 72 runs.
+2. **Protocol + gate 0.95 ✅ for Llama-class** — pre-pilot proof shows reliable gate passage on mixing; **not** a gate-calibration problem on mistral.
+3. **Mistral Nemo 12B ≠ thesis model** — low emergence eligibility and zero CM flips are **exploratory null/weak signals** for this model only; **do not** import into Methods/Results as thesis claims.
+4. **Main-study planning** — expect **high attempted-run counts** for emergence eligible targeting (`run_main.py`); lattice weakest in pilot (1/12 eligible); wall-clock on HPC may be **days not hours** if censorship rates are non-trivial even on Llama.
+5. **Optional Llama API pilot (#1b)** — more informative after this run: same grid with `llama31` + **Ashery letters** before committing Stanford HPC wall-clock.
+6. **Next code step:** `rsync` pilot `data/` + `logs/` from server → local `analyze.py --all --model mistralnemo` (checklist **#3b**).
+
+### What this pilot does **not** decide
+
+- H1/H2/H3 confirmatory outcomes (wrong model; not Methods data).
+- Whether lattice/random should be demoted to exploratory (pilot n=12/topology; directional only).
+- Optimal `convergence_threshold` (0.95 is Ashery **paper** criterion; Llama passed it reliably on mixing).

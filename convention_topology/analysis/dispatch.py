@@ -21,6 +21,7 @@ from convention_topology.analysis.h2 import h2_analysis
 from convention_topology.analysis.h3a import h3a_analysis, sensitivity_50_agreement
 from convention_topology.analysis.h3b import h3b_analysis
 from convention_topology.analysis.h4 import h4_analysis
+from convention_topology.analysis.memory_decision import compare_memory_decision, run_memory_decision
 from convention_topology.persistence import write_analysis_csv, write_analysis_json
 
 
@@ -106,10 +107,17 @@ def run_all(
     h4: bool,
     eligibility: bool,
     cross_model: bool,
+    memory_decision: bool = False,
+    memory_decision_compare: bool = False,
     sensitivity_50: bool,
     all_: bool,
 ) -> None:
     """The one call `analyze.py` makes: dispatch every requested per-model script + cross-model."""
+    if memory_decision_compare:
+        compare_memory_decision(data_dir, outputs_dir, models=["mistralnemo", "llama31"])
+        if not (memory_decision or all_ or h1 or h2 or h3a or h3b or h4 or eligibility or cross_model):
+            return
+
     if cross_model:
         run_cross_model(data_dir, outputs_dir)
         if not all_:
@@ -133,3 +141,6 @@ def run_all(
         run_h4(runs_df, model_outputs_dir)
     if all_ or eligibility:
         run_eligibility(runs_df, model_outputs_dir)
+    # Exploratory Doug ask — not part of --all confirmatory suite
+    if memory_decision:
+        run_memory_decision(data_dir, outputs_dir, model=model)

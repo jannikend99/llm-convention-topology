@@ -14,7 +14,8 @@ params:
   rewards_set: [[-50, 100]]
   memory_size_set: [5]
   # Ashery split: W=10 emergence (Fig. 1) vs W=2 CM / bias
-  options_emergence: [A, B, C, D, E, F, G, H, I, J]
+  # LOCK (2026-07-27): always Ashery plotter set — never A–J (A-primacy confound; see WORKING §17)
+  options_emergence: [Q, M, X, Y, F, J, P, R, C, D]
   options_cm: [Q, M]
   incumbent_index: 0                # prepared CM: options_cm[0] incumbent, other committed_to
 run:
@@ -26,16 +27,14 @@ run:
   attempted_cap_factor: 3
 models:                             # registry (§4); active model chosen by CLI --model
   llama31:
-    provider: openrouter
-    model_id: meta-llama/llama-3.1-70b-instruct
-    base_url: https://openrouter.ai/api/v1
-    api_key_env: OPENROUTER_API_KEY
+    # Proof / Llama-vs-Mistral emergence track (2026-07-28): Together 3.3 serverless.
+    # Thesis main study may switch to self-hosted 3.1 @ Stanford — document model string in Methods.
+    provider: together
+    model_id: meta-llama/Llama-3.3-70B-Instruct-Turbo
+    base_url: https://api.together.xyz/v1
+    api_key_env: TOGETHER_API_KEY
     temperature: 0.5
-    # 2000: CoT + {'value':...}; 512 truncates before value (C-05; proof track D6)
     max_tokens: 2000
-    openrouter_provider:
-      allow_fallbacks: false
-      only: ["deepinfra"]  # pinned C-05 2026-07-20
   qwen25:
     provider: openrouter
     model_id: qwen/qwen-2.5-72b-instruct
