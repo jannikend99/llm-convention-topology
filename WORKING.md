@@ -1,49 +1,29 @@
-# llm-convention-topology — Implementation Working Document
+# llm-convention-topology — Implementation notes
 
 **Repository:** [github.com/jannikend99/llm-convention-topology](https://github.com/jannikend99/llm-convention-topology)  
-**Meta-repo path:** `Master Thesis/02_Topic/Experiment_Code/llm-convention-topology/`  
-**Last updated:** 2026-07-27 (two-program methodology §4; Ashery letters; pilot re-run §16–17)  
-**Language:** English (code + docs)
+**Meta-repo path:** `02_Topic/Experiment_Code/llm-convention-topology/`
+
+**SSOT for behaviour:** the Python code in this repo. **SSOT for counted design:** `03_Methods.tex`. **Live execution (Yen, pilot, main study):** meta-repo [`STANFORD_PLAN.md`](../../../STANFORD_PLAN.md).
+
+This file is implementation notes and session history. Sections from **Scaling & infra** downward are a **July 2026 snapshot** (Hetzner `mistralnemo` API path). They are not the Stanford queue. `TODO.md` and `Doug_Open_Questions.md` no longer exist.
 
 ---
 
 ## Charter
 
-This document is the **single source of truth for thesis experiment code**. All implementation work is planned, tracked, and signed off here before (and while) code is written.
-
 **Orientation:** Extend the public Ashery et al. (2025) LLM Naming Game release — Zenodo [`asheryAINormsZenodo2024`](../../Thesis_Writing/literature.bib) / GitHub `Ariel-Flint-Ashery/AI-norms` — read-only at `../ashery-ai-norms/`. Do **not** edit the Ashery submodule in place.
 
-**Thesis extensions (locked in Methods):** Centola-3 topologies (mixing, random regular deg 4, 1D ring lattice deg 4), stability gate at **0.95** (not Ashery repo default 1.0), Phase 1 cap **5000**, factorial Phase 2 CM sweep **k ∈ {1…6}**, four-model between-run factor, eligibility logging, analysis aligned to H1–H3b (+ exploratory H4).
+**Thesis extensions (as in Methods, until Stanford lock):** Centola-3 topologies (mixing, random regular deg 4, 1D ring lattice deg 4), stability gate at **0.95** (not Ashery repo default 1.0), two independent programs, CM size sweep, eligibility logging, analysis aligned to H1–H3b (+ exploratory H4).
 
-**Out of scope for v1 main study:** `meta_prompting*.py`, `NG_module.py` minimal-theory battery, scale-free/ER topologies, Mehdizadeh Mason–Watts graphs.
+**Out of scope for v1 main study unless the lock adds them:** `meta_prompting*.py`, `NG_module.py` minimal-theory battery, scale-free/ER topologies, Mehdizadeh Mason–Watts graphs.
 
 ---
 
 ## Status
 
-| Field | Value |
-| --- | --- |
-| Stage | Offline build ✅ · C-05 ✅ · Ashery-split code ✅ · **async engine ✅** (§15) · **pre-pilot proofs complete** (emergence 8/8 · CM smoke · k=6 flip) · **Step ① ✅** · **infra provider (#0b) ✅** · **infra pilot (#3) ✅** (§17) |
-| Methods LaTeX | **Synced 2026-08-06** to two-program design (TODO D4 closed); model strings still open (D1) |
-| Next gate | **Doug preview (#4)** → optional **Stanford HPC Llama pilot (#1c)** → **main study @ Stanford HPC (#3)** · API Llama pilot (#1b) ❌ |
-| Pilot (`mistralnemo`) | **Complete 2026-07-26** — 72/72 runs, 0 failed; **not Methods/thesis data** (§17) |
-| Main study | Code ready; **thesis confirmatory runs** planned Stanford HPC (TODO **16a**) |
+Cloud-API build and Hetzner `mistralnemo` 72/72 are done. That is **not** Yen. Next work is P2–P7 in `STANFORD_PLAN.md` (local inference, smoke, pilot, main study).
 
-### Next steps (live checklist)
-
-| # | Step | Status | Notes |
-| --- | --- | --- | --- |
-| 1 | Mixing emergence proof (Ashery W=10, 8 seeds) | ✅ **done 2026-07-23** | [`docs/sessions/2026-07-21_together_ashery_proof.md`](docs/sessions/2026-07-21_together_ashery_proof.md) |
-| 2 | CM smoke + k=6 flip demo | ✅ **done 2026-07-23** | log §7.3–7.4 |
-| **2c** | **Async engine (A1/A2/A3/A6 + ⑤ pool scaffold + ⑥ adaptive limiter)** — parallel p1+p2, global API gate, run-level pool | ✅ **done 2026-07-24** | Async is now the **default** engine (`--engine async`). See §15 · meta `TODO.md` **#0** / **#16b** |
-| **2d** | **Step ① — measure baseline + real 429 ceiling** | ✅ **done 2026-07-24** | `mistralnemo` / DeepInfra direct: **0× 429** at 4→192; **200/200 OK** at 192; hard cap **200** concurrent/model. Production pin: **`--api-concurrency 192`** (§5 · §15) |
-| **2e** | **Provider setup (pilot path)** | ✅ **done 2026-07-24** | `mistralnemo` registry + `DEEPINFRA_API_KEY`; smoke ✅; `max_tokens: 2000`. Multi-endpoint `ProviderPool` N>1 **deferred** |
-| 3 | **Pilot** (`mistralnemo`, Ashery letters) | 🔄 **running 2026-07-27** — Hetzner `tmux pilot`; 72-run grid | §16 · session log |
-| 3b | Review pilot + `analyze.py --model mistralnemo` | ✅ **done 2026-08-06** | rsync from Hetzner; `outputs/mistralnemo/` H1–H4 + eligibility (exploratory; not Methods data) |
-| 3c | **Optional Llama pilot @ Stanford HPC** (was API #1b) | ⬜ with / before main study | API path **declined 2026-08-06** (cost); small self-hosted `llama31` grid optional before full **#3** |
-| 4 | Stanford HPC + main study (`llama31`) | ⬜ after **#3c** | TODO **16a** — default thesis data path |
-| 5 | Optional Doug preview (directional) | ⬜ | Not confirmatory claims |
-| 6 | Theory/Methods LaTeX sync (split protocol) | ✅ **2026-08-06** | TODO **D4** closed; Methods describes **main study**, not `mistralnemo` pilot runs |
+---
 
 ### Scaling & infra (backlog — TODO #16)
 
@@ -660,11 +640,11 @@ Retired Ashery keys: `network.alpha/beta/erdos_p` (scale-free/ER), `params.initi
 
 ## 13. Open decisions and blockers
 
-*Code-blocking items only. Model-ID locks tracked in [`01_Orga/Doug_Open_Questions.md`](../../../01_Orga/Doug_Open_Questions.md).*
+*Code-blocking items only. Model-ID locks after open-weight share: [`STANFORD_PLAN.md`](../../../STANFORD_PLAN.md).*
 
 | # | Item | Blocks | Owner | Status |
 | --- | --- | --- | --- | --- |
-| 1 | GPT-5.4 / Claude 5.5 pinned model strings + provider access | §4 registry entries; Phase C smoke for those two models (Llama/Qwen unaffected) | Doug / Jannik | **deferred 2026-07-20** — Doug email: open-source first; strings after result share ([Doug_Open_Questions.md](../../../01_Orga/Doug_Open_Questions.md)) |
+| 1 | GPT-5.4 / Claude 5.5 pinned model strings + provider access | §4 registry entries; Phase C smoke for those two models (Llama/Qwen unaffected) | Doug / Jannik | **deferred 2026-07-20** — Doug email: open-source first; strings after result share ([STANFORD_PLAN.md](../../../STANFORD_PLAN.md)) |
 | 2 | **Bib mismatch found 2026-07-13:** `asheryAINormsZenodo2024` cited in Methods/Appendix | Appendix repro citations | Jannik | **closed 2026-07-14** — entry in `thesis-writing/literature.bib` (uncommitted) |
 | 3 | OpenRouter for Llama-3.1-70B + Qwen2.5-72B (`OPENROUTER_API_KEY`; pin `openrouter_provider.only` after C-05 smoke) | §4 registry; Phase C smoke | Jannik | **closed 2026-07-14** — see [`PROVIDER_ROUTING_PLAN.md`](PROVIDER_ROUTING_PLAN.md) |
 | 4 | API budget + per-provider rate limits | Phase D/G scheduling | Jannik | **partial 2026-07-24** — pilot ~$1–3 (`mistralnemo`); optional Llama pilot ~$25–80 (#1b); main study @ Stanford HPC |
@@ -694,7 +674,7 @@ Retired Ashery keys: `network.alpha/beta/erdos_p` (scale-free/ER), `params.initi
 | 2026-07-14 — Provider routing (OpenRouter + direct APIs) | `config.yaml` registry: Llama/Qwen → OpenRouter (`meta-llama/llama-3.1-70b-instruct`, `qwen/qwen-2.5-72b-instruct`); GPT/Claude → direct OpenAI/Anthropic; auxiliary `gemini35` → Google OpenAI-compat. `ModelSpec.provider` + `openrouter_provider`; `OpenAICompatClient` sends OR headers + `extra_body.provider`; `config_hash` includes routing pins. 153 tests green, 91% coverage. **C-05 follow-up:** pin `openrouter_provider.only` after paid smoke. See [`PROVIDER_ROUTING_PLAN.md`](PROVIDER_ROUTING_PLAN.md). |
 | 2026-07-20 — **C-05 complete** (OpenRouter smoke) | Paid smoke `llama31` + `qwen25` 20/20; pin `only: ["deepinfra"]`; `max_tokens` 200→512 (CoT truncation before `{'value':…}`). Full write-up: [`docs/sessions/2026-07-20_C05_openrouter_smoke.md`](docs/sessions/2026-07-20_C05_openrouter_smoke.md). `gemini35` deferred. Next: commit → real pilot. |
 | 2026-07-20 — OpenRouter response cache off | `OpenAICompatClient` sends `X-OpenRouter-Cache: false` on every OR call (overrides presets). Response caching would replay identical completions for identical agent histories → confound Naming Game. Prompt-prefix caching left alone. |
-| 2026-07-20 — Doug email (open-source first) | Design ready as-is; Llama pilot → share results → possible iteration → expensive models later. §13 #1/#4/#5 deferred. See [`01_Orga/Doug_Open_Questions.md`](../../../01_Orga/Doug_Open_Questions.md). |
+| 2026-07-20 — Doug email (open-source first) | Design ready as-is; Llama pilot → share results → possible iteration → expensive models later. §13 #1/#4/#5 deferred. See [`STANFORD_PLAN.md`](../../../STANFORD_PLAN.md). |
 | 2026-07-24 — **Async engine (checklist #2c ✅)** | New default parallelisation path — steps ②–⑥ of §15. `async_llm.py` (`AsyncOpenAICompatClient`, `AsyncRetryPolicy` — exact async twin of `RetryPolicy`; `RateLimiter` global ceiling + `Retry-After` cooldown ⑥; `ProviderPool` round-robin + 429 failover ⑤ scaffold, N=1 today; `AsyncClientAdapter` wraps the sync `MockLLMClient`). `async_simulation.py` (`make_async_interaction_step` — RNG drained in sync order, then both player calls via `asyncio.gather` ④). `async_run.py` (`execute_run_async` — each run stays a sequential coroutine; persistence/gate/resume/checkpoint reused verbatim from `run.py`). `async_orchestration.py` (`run_pilot_async`/`run_main_study_async` — `asyncio.gather` + `Semaphore` over runs ③, shared `ProviderPool`/`RateLimiter`). `run_pilot.py`/`run_main.py` default to `--engine async` with `--run-concurrency`/`--api-concurrency`; sync `--workers` retained as the offline mock/reference engine only. **Determinism lock verified:** `tests/test_async_run_integration.py` asserts byte-identical emergence + CM trajectories vs. the sync engine for the same seed/mock. Tests: +14 (`test_async_llm.py`, `test_async_run_integration.py`); full async subsuite green (retry/backoff order, rate-limiter bound, pool round-robin + failover, sync↔async equivalence, CM zero-API short-circuit). **No legacy async fallback** (per instruction). **Providers later:** multi-key/multi-host fan-out is config-only via `build_provider_pool` (pass N clients to `ProviderPool`; `from_specs` constructor is the planned convenience, not yet built) — no simulation change. Next: **Step ① 429-ceiling measurement** (#2d) to set `--api-concurrency`. |
 | 2026-07-24 — **Async review remediation** (reviewer #2/#3) | **#2 live-429 gap fixed:** `ProviderPool.complete` now catches the SDK's real `openai.RateLimitError` (not only the synthetic `RateLimitedError`) → `_retry_after_seconds` reads `Retry-After`, endpoint cooldown + global `RateLimiter.pause()` fire before re-raise, so ⑥ throttles the whole loop on live 429s instead of every worker retrying independently. **#3 run-level test added:** `test_async_batch_matches_sync_batch_and_resumes` asserts `run_batch_async` ↔ sync `run_batch` identical `{run_id: status}` for the mock and that a second pass skips all (resume). +3 async tests (17 total, all green). #1 (Step ① measurement) stays the user's pre-pilot run; #4 (async↔sync duplication) accepted, guarded by the equivalence tests; #5 (start `--run-concurrency 6 --api-concurrency 4`, then scale) folded into the §15 run recipe. Defaults left at 12/8 (documented as optimistic). |
 | 2026-07-24 — **Pilot strategy (#3 scope lock)** | 72-run pilot on `mistralnemo` (same protocol; model only differs); excluded from Methods. **After pilot:** optional Llama API pilot (**#1b** cost + decision) **or** Stanford main study (`llama31`). §5 + `TODO.md` updated. |
