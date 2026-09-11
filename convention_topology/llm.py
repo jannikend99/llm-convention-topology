@@ -43,6 +43,13 @@ class AsyncLLMClient(Protocol):
     async def complete(self, prompt: str, *, options: Sequence[str]) -> LLMResponse: ...
 
 
+def openai_extra_body(*, thinking: bool, reasoning_effort: str | None) -> dict[str, Any]:
+    extra: dict[str, Any] = {"chat_template_kwargs": {"enable_thinking": thinking}}
+    if reasoning_effort:
+        extra["reasoning_effort"] = reasoning_effort
+    return extra
+
+
 def _require_localhost(base_url: str, provider: str) -> None:
     if provider == "mock":
         return
@@ -61,6 +68,7 @@ class OpenAICompatClient:
         timeout: float = 120.0,
         provider: str = "openai_compat",
         reasoning_effort: str | None = None,
+        thinking: bool = False,
     ):
         _require_localhost(base_url, provider)
         self._client = OpenAI(
@@ -74,6 +82,7 @@ class OpenAICompatClient:
         self.max_tokens = max_tokens
         self.base_url = base_url
         self.reasoning_effort = reasoning_effort
+        self.thinking = thinking
 
     def complete(self, prompt: str, *, options: Sequence[str]) -> LLMResponse:
         kwargs: dict[str, Any] = {
@@ -83,8 +92,9 @@ class OpenAICompatClient:
             "max_tokens": self.max_tokens,
             "response_format": json_schema_for_options(options),
         }
-        if self.reasoning_effort:
-            kwargs["extra_body"] = {"reasoning_effort": self.reasoning_effort}
+        kwargs["extra_body"] = openai_extra_body(
+            thinking=self.thinking, reasoning_effort=self.reasoning_effort
+        )
         response = self._client.chat.completions.create(**kwargs)
         message = response.choices[0].message
         text = message.content or ""
@@ -121,6 +131,7 @@ class AsyncOpenAICompatClient:
         timeout: float = 120.0,
         provider: str = "openai_compat",
         reasoning_effort: str | None = None,
+        thinking: bool = False,
     ):
         _require_localhost(base_url, provider)
         self._client = AsyncOpenAI(
@@ -134,6 +145,7 @@ class AsyncOpenAICompatClient:
         self.max_tokens = max_tokens
         self.base_url = base_url
         self.reasoning_effort = reasoning_effort
+        self.thinking = thinking
 
     async def complete(self, prompt: str, *, options: Sequence[str]) -> LLMResponse:
         kwargs: dict[str, Any] = {
@@ -143,8 +155,9 @@ class AsyncOpenAICompatClient:
             "max_tokens": self.max_tokens,
             "response_format": json_schema_for_options(options),
         }
-        if self.reasoning_effort:
-            kwargs["extra_body"] = {"reasoning_effort": self.reasoning_effort}
+        kwargs["extra_body"] = openai_extra_body(
+            thinking=self.thinking, reasoning_effort=self.reasoning_effort
+        )
         response = await self._client.chat.completions.create(**kwargs)
         message = response.choices[0].message
         text = message.content or ""

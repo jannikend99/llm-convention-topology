@@ -41,7 +41,7 @@ run:
   artifact_root: ""
 
 jobs:
-  models: [llama4_scout, gemma4_31b, qwen38_27b, mistral_small4]
+  models: [nemotron35_lightning, gemma4_31b, qwen38_27b, mistral_small4]
   programs: [emergence, cm]
 
 serve:
@@ -51,10 +51,10 @@ serve:
   serve_wait_timeout: 600
 
 models:
-  llama4_scout:
-    model_id: meta-llama/Llama-4-Scout-17B-16E-Instruct
+  nemotron35_lightning:
+    model_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16
     revision: placeholder-revision
-    shorthand: llama4_scout
+    shorthand: nemotron35_lightning
     thinking: false
     thinking_always_on: false
     reasoning_effort: null
@@ -70,6 +70,15 @@ models:
     seed_indices_per_slice:
       emergence: 8
       cm: 4
+    vllm_extra_args:
+      - --enable-prefix-caching
+      - --async-scheduling
+      - --mamba-backend
+      - flashinfer
+      - --mamba-ssm-cache-dtype
+      - float16
+      - --reasoning-parser
+      - nemotron_v3
   gemma4_31b:
     model_id: google/gemma-4-31B-it
     revision: placeholder-revision

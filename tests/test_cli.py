@@ -53,7 +53,8 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn('CAMPAIGN="${CAMPAIGN:-technical-smoke}"', job)
         self.assertIn('ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"', job)
         self.assertIn('--campaign "${CAMPAIGN}"', job)
-        self.assertIn("vLLM launch unset", job)
+        self.assertIn("VLLM_PIN", job)
+        self.assertIn("v0.28.0", job)
         self.assertIn("VLLM_MODULE", job)
         self.assertIn("VLLM_SIF", job)
         self.assertIn("VLLM_LAUNCH", job)
@@ -74,7 +75,7 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn('SEED_TO:?', job)
         self.assertIn('TOPOLOGY:?', job)
         self.assertIn("# Wait until /v1/models answers", job)
-        self.assertIn('url = os.environ["BASE_URL"] + "/models"', job)
+        self.assertIn("VLLM_EXTRA", job)
 
     def test_run_main_cli_base_url_reaches_model_spec(self):
         captured = {}
@@ -87,7 +88,7 @@ class DirtyGitCliTests(unittest.TestCase):
             code = run_main.main(
                 [
                     "--model",
-                    "llama4_scout",
+                    "nemotron35_lightning",
                     "--program",
                     "emergence",
                     "--seed-from",
@@ -144,8 +145,8 @@ class DirtyGitCliTests(unittest.TestCase):
             code = run_main.main(["--print-jobs"])
         self.assertEqual(code, 0)
         text = buf.getvalue()
-        self.assertIn("llama4_scout", text)
-        self.assertIn("meta-llama/Llama-4-Scout-17B-16E-Instruct", text)
+        self.assertIn("nemotron35_lightning", text)
+        self.assertIn("nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16", text)
         self.assertIn("model_id=", text)
 
     def test_run_one_refuses_dirty_tree(self):

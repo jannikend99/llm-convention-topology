@@ -139,6 +139,7 @@ def build_client(model_spec: ModelSpec, mock_policy: str, seed: int, options: Se
         max_tokens=model_spec.max_tokens,
         provider=model_spec.provider,
         reasoning_effort=model_spec.reasoning_effort,
+        thinking=model_spec.thinking,
     )
 
 

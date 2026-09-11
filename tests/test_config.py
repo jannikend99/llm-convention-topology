@@ -52,14 +52,14 @@ class ConfigLockTests(unittest.TestCase):
         self.assertEqual(spec.api_key, "EMPTY")
 
     def test_localhost_openai_compat_does_not_need_real_key(self):
-        spec = resolve_model(self.config, "llama4_scout")
+        spec = resolve_model(self.config, "nemotron35_lightning")
         self.assertEqual(spec.provider, "openai_compat")
         self.assertIn("127.0.0.1", spec.base_url)
 
     def test_apply_serve_base_url_overrides_resolved_model(self):
         config = load_config()
         apply_serve_base_url(config, "http://127.0.0.1:9999/v1")
-        spec = resolve_model(config, "llama4_scout")
+        spec = resolve_model(config, "nemotron35_lightning")
         self.assertEqual(spec.base_url, "http://127.0.0.1:9999/v1")
 
     def test_protocol_fingerprint_includes_trajectory_modules(self):
@@ -82,19 +82,19 @@ class ConfigLockTests(unittest.TestCase):
     def test_default_jobs_models_are_the_four_shorthands(self):
         self.assertEqual(
             self.config["jobs"]["models"],
-            ["llama4_scout", "gemma4_31b", "qwen38_27b", "mistral_small4"],
+            ["nemotron35_lightning", "gemma4_31b", "qwen38_27b", "mistral_small4"],
         )
 
     def test_thinking_on_and_off_in_jobs_models_loads(self):
         raw = copy.deepcopy(self.config)
-        raw["jobs"]["models"] = ["llama4_scout", "gemma4_31b_think"]
+        raw["jobs"]["models"] = ["nemotron35_lightning", "gemma4_31b_think"]
         validated = validate_config(raw)
-        self.assertFalse(validated["models"]["llama4_scout"]["thinking"])
+        self.assertFalse(validated["models"]["nemotron35_lightning"]["thinking"])
         self.assertTrue(validated["models"]["gemma4_31b_think"]["thinking"])
 
     def test_rejects_slate_model_key(self):
         raw = copy.deepcopy(self.config)
-        raw["models"]["llama4_scout"]["slate"] = "A"
+        raw["models"]["nemotron35_lightning"]["slate"] = "A"
         with self.assertRaises(ConfigError):
             validate_config(raw)
 

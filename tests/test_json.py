@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from convention_topology.config import ConfigError, load_config, resolve_model
 from convention_topology.json_output import ParseError, parse_decision
-from convention_topology.llm import MockLLMClient, OpenAICompatClient
+from convention_topology.llm import MockLLMClient, OpenAICompatClient, openai_extra_body
 from convention_topology.prompting import build_user_prompt, format_history
 
 
@@ -52,8 +52,15 @@ class ClientTests(unittest.TestCase):
             )
 
     def test_resolve_model_localhost_no_env(self):
-        spec = resolve_model(load_config(), "llama4_scout")
+        spec = resolve_model(load_config(), "nemotron35_lightning")
         self.assertEqual(spec.api_key, "EMPTY")
+
+    def test_openai_extra_body_turns_thinking_off(self):
+        extra = openai_extra_body(thinking=False, reasoning_effort=None)
+        self.assertEqual(extra["chat_template_kwargs"]["enable_thinking"], False)
+        with_effort = openai_extra_body(thinking=True, reasoning_effort="medium")
+        self.assertTrue(with_effort["chat_template_kwargs"]["enable_thinking"])
+        self.assertEqual(with_effort["reasoning_effort"], "medium")
 
     def test_prompt_is_canonical(self):
         player = {"my_history": [], "partner_history": [], "outcome": []}

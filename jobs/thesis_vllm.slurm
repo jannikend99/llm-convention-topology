@@ -1,6 +1,7 @@
 #!/bin/bash
-# Thesis counted-path job. vLLM stack identity is an operator fill (fail-closed).
-# #SBATCH -C is an operator fill after a fit. Do not invent a GPU color here.
+# Thesis counted-path job. vLLM pin: v0.28.0 (stable as of 2026-09-11).
+# Prefer VLLM_SIF=${SCRATCH}/images/vllm-openai-v0.28.0.sif after apptainer pull.
+# Override with VLLM_MODULE / VLLM_SIF / VLLM_LAUNCH. #SBATCH -C is an operator fill after a fit.
 # Not the repo-root Ollama smoke.
 #SBATCH --job-name=thesis-vllm
 #SBATCH -p gpu
@@ -19,7 +20,15 @@
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
 
+SCRATCH="/scratch/shared/${USER}"
+VLLM_PIN="${VLLM_PIN:-v0.28.0}"
+DEFAULT_SIF="${SCRATCH}/images/vllm-openai-${VLLM_PIN}.sif"
+
 module purge
+
+if [[ -z "${VLLM_MODULE:-}" && -z "${VLLM_SIF:-}" && -z "${VLLM_LAUNCH:-}" && -f "${DEFAULT_SIF}" ]]; then
+  VLLM_SIF="${DEFAULT_SIF}"
+fi
 
 if [[ -n "${VLLM_MODULE:-}" ]]; then
   module load "${VLLM_MODULE}"
@@ -28,7 +37,7 @@ elif [[ -n "${VLLM_SIF:-}" ]]; then
 elif [[ -n "${VLLM_LAUNCH:-}" ]]; then
   :
 else
-  echo "vLLM launch unset: export VLLM_MODULE, VLLM_SIF, or VLLM_LAUNCH from cluster evidence, then resubmit." >&2
+  echo "vLLM launch unset: pin is ${VLLM_PIN}. Pull docker://vllm/vllm-openai:${VLLM_PIN} to ${DEFAULT_SIF}, or export VLLM_MODULE, VLLM_SIF, or VLLM_LAUNCH, then resubmit." >&2
   exit 1
 fi
 
@@ -40,7 +49,6 @@ else
   VLLM_BIN=(vllm)
 fi
 
-SCRATCH="/scratch/shared/${USER}"
 CAMPAIGN="${CAMPAIGN:-technical-smoke}"
 ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"
 VENV="${SCRATCH}/venvs/thesis"
@@ -71,13 +79,19 @@ import shlex
 
 from convention_topology.config import load_config, resolve_model
 
-spec = resolve_model(load_config(), os.environ["MODEL"])
+config = load_config()
+spec = resolve_model(config, os.environ["MODEL"])
+entry = config["models"][os.environ["MODEL"]]
+extra = entry.get("vllm_extra_args") or []
+if not isinstance(extra, list):
+    extra = []
 defaults = {
     "MODEL_ID": spec.model_id,
     "DTYPE": spec.dtype or "",
     "MAX_MODEL_LEN": str(spec.max_model_len),
     "MAX_NUM_SEQS": str(spec.max_num_seqs),
     "TP": str(spec.tp),
+    "VLLM_EXTRA_ARGS": " ".join(str(part) for part in extra),
 }
 for key, value in defaults.items():
     if not os.environ.get(key):
@@ -131,6 +145,11 @@ on_pretimeout() {
 trap stop_vllm EXIT
 trap on_pretimeout USR1 TERM INT
 
+VLLM_EXTRA=()
+if [[ -n "${VLLM_EXTRA_ARGS:-}" ]]; then
+  read -r -a VLLM_EXTRA <<< "${VLLM_EXTRA_ARGS}"
+fi
+
 "${VLLM_BIN[@]}" serve "${MODEL_ID}" \
   --host 127.0.0.1 \
   --port "${PORT}" \
@@ -138,6 +157,7 @@ trap on_pretimeout USR1 TERM INT
   --max-model-len "${MAX_MODEL_LEN}" \
   --max-num-seqs "${MAX_NUM_SEQS}" \
   --tensor-parallel-size "${TP}" \
+  "${VLLM_EXTRA[@]}" \
   >"${VLLM_LOG}" 2>&1 &
 VLLM_PID=$!
 
