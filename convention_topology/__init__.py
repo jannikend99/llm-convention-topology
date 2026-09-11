@@ -1,8 +1,8 @@
-"""Thesis LLM Naming Game — Centola-3 topologies and stability gate."""
+"""Thesis LLM Naming Game — locked protocol, mock-green counted path."""
 
 from convention_topology.config import load_config
-from convention_topology.gate import GateResult, has_tracker_converged, evaluate_phase1_gate
-from convention_topology.networks import get_interaction_network, adjacency_hash
+from convention_topology.gate import GateResult, evaluate_phase1_gate, has_tracker_converged
+from convention_topology.networks import adjacency_hash, get_interaction_network
 
 __all__ = [
     "load_config",

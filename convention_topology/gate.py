@@ -1,87 +1,77 @@
+"""Study 1 integer gate: first t>=144 with at least 137 successes in the trailing 144."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 
+GATE_WINDOW = 144
+MIN_SUCCESSES = 137
+CAP_PHASE1 = 5000
+
+
 @dataclass(frozen=True)
 class GateResult:
-    """Phase 1 stability gate outcome for one population run."""
-
-    eligibility: int
+    gate_passed: bool
     t_gate: int | None
     run_status: str
-    trailing_success_rate: float | None
+    stop_reason: str | None
+    trailing_successes: int | None
 
 
-def trailing_success_rate(
-    outcomes: Sequence[int],
-    window_size: int,
-) -> float | None:
+def trailing_successes(outcomes: Sequence[int], window_size: int) -> int | None:
     if len(outcomes) < window_size:
         return None
-    recent = outcomes[-window_size:]
-    return sum(recent) / window_size
+    return int(sum(outcomes[-window_size:]))
 
 
-def has_tracker_converged(
-    tracker: Mapping[str, Sequence[int]],
-    *,
-    convergence_time: int,
-    threshold: float,
-) -> bool:
-    """
-    Return True when the trailing window meets the stability gate.
-
-    Thesis lock: threshold = 0.95 over convergence_time = 3N = 72 interactions.
-    Ashery public code defaults to threshold = 1.0 (100%).
-    """
+def has_tracker_converged(tracker: Mapping[str, Sequence[int]], *, window: int = GATE_WINDOW) -> bool:
     outcomes = tracker["outcome"]
-    if len(outcomes) < convergence_time:
+    if len(outcomes) < window:
         return False
-    recent = outcomes[-convergence_time:]
-    return sum(recent) >= threshold * convergence_time
+    return int(sum(outcomes[-window:])) >= MIN_SUCCESSES
+
+
+def first_gate_time(outcomes: Sequence[int], *, window: int = GATE_WINDOW) -> int | None:
+    if len(outcomes) < window:
+        return None
+    for t in range(window, len(outcomes) + 1):
+        if int(sum(outcomes[t - window : t])) >= MIN_SUCCESSES:
+            return t
+    return None
 
 
 def evaluate_phase1_gate(
     tracker: Mapping[str, Sequence[int]],
     *,
-    convergence_time: int,
-    threshold: float,
-    max_phase1_interactions: int,
+    window: int = GATE_WINDOW,
+    max_phase1_interactions: int = CAP_PHASE1,
 ) -> GateResult:
-    """
-    Evaluate Phase 1 gate state after the interaction loop stops.
-
-    Eligible runs pass the >=95%/3N criterion before the hard cap.
-    Censored runs hit max_phase1_interactions without gate passage.
-    """
     outcomes = tracker["outcome"]
-    interaction_count = len(outcomes)
-
-    if has_tracker_converged(
-        tracker,
-        convergence_time=convergence_time,
-        threshold=threshold,
-    ):
+    t = len(outcomes)
+    t_gate = first_gate_time(outcomes, window=window)
+    successes = trailing_successes(outcomes, window)
+    if t_gate is not None:
         return GateResult(
-            eligibility=1,
-            t_gate=interaction_count,
+            gate_passed=True,
+            t_gate=t_gate,
             run_status="completed",
-            trailing_success_rate=trailing_success_rate(outcomes, convergence_time),
+            stop_reason="gate",
+            trailing_successes=successes,
         )
-
-    if interaction_count >= max_phase1_interactions:
+    if t >= max_phase1_interactions:
         return GateResult(
-            eligibility=0,
+            gate_passed=False,
             t_gate=None,
             run_status="censored",
-            trailing_success_rate=trailing_success_rate(outcomes, convergence_time),
+            stop_reason="cap",
+            trailing_successes=successes,
         )
-
     return GateResult(
-        eligibility=0,
+        gate_passed=False,
         t_gate=None,
-        run_status="incomplete",
-        trailing_success_rate=trailing_success_rate(outcomes, convergence_time),
+        run_status="in_progress",
+        stop_reason=None,
+        trailing_successes=successes,
     )

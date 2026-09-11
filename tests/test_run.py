@@ -1,0 +1,530 @@
+from __future__ import annotations
+
+import json
+import random
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from convention_topology.campaign import ensure_campaign_files
+from convention_topology.config import load_config, resolve_model
+from convention_topology.json_output import ParseError
+from convention_topology.llm import MockLLMClient, RunFailedError
+from convention_topology.persistence import SIDECAR_FIELDS, read_events, read_meta, run_paths
+from convention_topology.run import (
+    PROGRAM_CM,
+    PROGRAM_EMERGENCE,
+    StopRequested,
+    build_run_config,
+    execute_run,
+)
+from convention_topology.seeds import environment_seed, model_seed
+
+
+def _cfg(program: str, tmp: Path, **overrides):
+    config = load_config()
+    files = ensure_campaign_files(tmp, config)
+    spec = resolve_model(config, "mock")
+    cfg = build_run_config(
+        config,
+        spec,
+        program=program,
+        topology="mixing",
+        seed_index=0,
+        cm_k=None if program == PROGRAM_EMERGENCE else 2,
+        pool_labels=files["pool"]["labels"],
+        pool_sha256=files["pool"]["sha256"],
+        code_commit="test",
+        artifact_root=str(tmp),
+    )
+    for key, value in overrides.items():
+        setattr(cfg, key, value)
+    return cfg, files
+
+
+class RecordingTests(unittest.TestCase):
+    def test_mock_cm_writes_three_artifacts_and_campaign_root(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _files = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=2, memory_size=12)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            paths = execute_run(cfg, client, campaign_dir=root)
+            self.assertTrue(paths.pickle_path.exists())
+            self.assertTrue(paths.meta_path.exists())
+            self.assertTrue(paths.events_path.exists())
+            self.assertTrue((root / "label_pool.json").exists())
+            self.assertTrue((root / "graphs.json").exists())
+            self.assertTrue((root / "config.snapshot.yaml").exists())
+            meta = read_meta(paths.meta_path)
+            for key in ("run_id", "campaign", "N", "H", "label_pool", "sampling_plan", "started_at"):
+                self.assertIn(key, meta)
+                self.assertIsNotNone(meta[key])
+            self.assertEqual(meta["sampling_plan"], "fixed_attempted")
+            self.assertEqual(set(SIDECAR_FIELDS), set(meta))
+            self.assertNotIn("eligibility", meta)
+            events = read_events(paths.events_path)
+            types = {row["record_type"] for row in events}
+            self.assertIn("run_segment_start", types)
+            self.assertIn("prepared_state", types)
+            self.assertIn("interaction", types)
+            for row in events:
+                if row["record_type"] == "interaction":
+                    self.assertEqual(row["option_order_p1"], row["option_order_p2"])
+            prepared = next(row for row in events if row["record_type"] == "prepared_state")
+            first_ix = next(row for row in events if row["record_type"] == "interaction")
+            self.assertLess(
+                events.index(prepared),
+                events.index(first_ix),
+            )
+            self.assertTrue(meta["prepared_state_valid"])
+            self.assertEqual(meta["t_cm_start"], 0)
+
+    def test_cm_turns_do_not_http(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, cm_k=8, phase2_horizon=3, memory_size=12)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            execute_run(cfg, client, campaign_dir=root)
+            self.assertEqual(client.call_count, 0)
+
+    def test_decision_budget_exhausts_without_committing(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, cm_k=2, phase2_horizon=1, retry_max_attempts=3)
+            client = MockLLMClient(
+                policy="scripted",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                scripted_responses=["not-json", "not-json", "not-json", "not-json"],
+            )
+            with self.assertRaises(RunFailedError) as ctx:
+                execute_run(cfg, client, campaign_dir=root)
+            self.assertEqual(ctx.exception.error_class, "attempts_exhausted")
+            events = read_events(next(root.joinpath("runs").rglob("*.events.jsonl")))
+            attempts = [row for row in events if row["record_type"] == "llm_attempt"]
+            self.assertEqual(len(attempts), 3)
+            self.assertFalse(any(row["record_type"] == "interaction" for row in events))
+            meta = read_meta(next(root.joinpath("runs").rglob("*.meta.json")))
+            self.assertEqual(meta["n_retries"], 3)
+            for row in attempts:
+                self.assertIsNotNone(row["prompt_sha256"])
+                self.assertTrue(row["t_start"])
+                self.assertTrue(row["t_end"])
+
+    def test_serve_down_does_not_consume_decision_budget(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(
+                PROGRAM_CM,
+                root,
+                n=8,
+                cm_k=2,
+                phase2_horizon=1,
+                provider="openai_compat",
+                endpoint_base_url="http://127.0.0.1:9/v1",
+                serve_wait_timeout=0.05,
+            )
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            health_calls = {"n": 0}
+
+            def health():
+                health_calls["n"] += 1
+                return False
+
+            with self.assertRaises(RunFailedError) as ctx:
+                execute_run(cfg, client, campaign_dir=root, health=health, sleep=_short_sleep)
+            self.assertEqual(ctx.exception.error_class, "serve_startup")
+            events = read_events(next(root.joinpath("runs").rglob("*.events.jsonl")))
+            transport = [row for row in events if row.get("error_class") == "transport"]
+            self.assertGreaterEqual(len(transport), 1)
+            self.assertEqual(client.call_count, 0)
+            meta = read_meta(next(root.joinpath("runs").rglob("*.meta.json")))
+            self.assertGreater(meta["wait_on_model_ms"], 0)
+            self.assertEqual(meta["n_retries"], 0)
+
+    def test_attempt_clocks_stamp_around_complete(self):
+        import time as time_mod
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=1)
+            inner = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            marks = []
+
+            class SlowClient:
+                def complete(self, prompt, *, options):
+                    marks.append("enter")
+                    time_mod.sleep(0.01)
+                    result = inner.complete(prompt, options=options)
+                    marks.append("leave")
+                    return result
+
+            paths = execute_run(cfg, SlowClient(), campaign_dir=root)
+            events = read_events(paths.events_path)
+            attempts = [row for row in events if row["record_type"] == "llm_attempt"]
+            self.assertGreaterEqual(len(attempts), 1)
+            self.assertEqual(marks, ["enter", "leave"] * len(attempts))
+            for row in attempts:
+                self.assertIsNotNone(row["prompt_sha256"])
+                self.assertEqual(len(row["prompt_sha256"]), 64)
+                self.assertTrue(row["t_start"])
+                self.assertTrue(row["t_end"])
+                self.assertGreaterEqual(row["duration_ms"], 10)
+
+    def test_emergence_gate_and_sidecar_window(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_EMERGENCE, root, n=48, gate_window=144)
+            client = MockLLMClient(
+                policy="imitate_modal",
+                rng=random.Random(0),
+                options=list(cfg.options),
+            )
+            paths = execute_run(cfg, client, campaign_dir=root)
+            meta = read_meta(paths.meta_path)
+            self.assertEqual(meta["gate_window"], 144)
+            self.assertEqual(meta["N"], 48)
+            self.assertIn(meta["run_status"], {"completed", "censored"})
+            if meta["run_status"] == "completed":
+                self.assertGreaterEqual(meta["t_gate"], 144)
+                self.assertTrue(meta["gate_passed"])
+
+
+async def _instant(_delay):
+    return None
+
+
+async def _short_sleep(delay):
+    import asyncio
+
+    await asyncio.sleep(min(float(delay), 0.02))
+
+
+class ResumeTests(unittest.TestCase):
+    def test_completed_skips_and_failed_is_kept(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=2)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(1),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            paths = execute_run(cfg, client, campaign_dir=root)
+            first = read_meta(paths.meta_path)
+            execute_run(cfg, client, campaign_dir=root)
+            self.assertEqual(read_meta(paths.meta_path)["n_interactions"], first["n_interactions"])
+
+            fail_cfg, _ = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=1, seed_index=1)
+            bad = MockLLMClient(
+                policy="scripted",
+                rng=random.Random(0),
+                options=list(fail_cfg.options),
+                scripted_responses=["bad", "bad", "bad"],
+            )
+            with self.assertRaises(RunFailedError):
+                execute_run(fail_cfg, bad, campaign_dir=root)
+            failed_meta = read_meta(next(root.joinpath("runs").rglob("*s01*.meta.json")))
+            self.assertEqual(failed_meta["run_status"], "failed")
+            execute_run(fail_cfg, client, campaign_dir=root)
+            self.assertEqual(read_meta(next(root.joinpath("runs").rglob("*s01*.meta.json")))["run_status"], "failed")
+
+    def test_censored_skips(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=2)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            paths = execute_run(cfg, client, campaign_dir=root)
+            meta = dict(read_meta(paths.meta_path))
+            meta["run_status"] = "censored"
+            paths.meta_path.write_text(json.dumps(meta, indent=2, sort_keys=True))
+            execute_run(cfg, client, campaign_dir=root)
+            self.assertEqual(read_meta(paths.meta_path)["run_status"], "censored")
+
+    def test_in_progress_continues(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=4)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            seen = {"n": 0}
+
+            def hook(kind: str) -> None:
+                if kind == "after_interaction":
+                    seen["n"] += 1
+                    if seen["n"] == 1:
+                        raise StopRequested("killed")
+
+            paths = execute_run(cfg, client, campaign_dir=root, on_stop=hook)
+            meta = dict(read_meta(paths.meta_path))
+            meta["run_status"] = "in_progress"
+            meta["stop_reason"] = None
+            paths.meta_path.write_text(json.dumps(meta, indent=2, sort_keys=True))
+            execute_run(cfg, client, campaign_dir=root)
+            self.assertEqual(read_meta(paths.meta_path)["run_status"], "completed")
+
+    def test_resume_mismatches_fail_config(self):
+        cases = (
+            ("prompt_template_hash", "deadbeef"),
+            ("pool_sha256", "deadbeef"),
+            ("model_revision", "other-revision"),
+            ("protocol_fingerprint", "deadbeef"),
+        )
+        for attr, value in cases:
+            with self.subTest(attr=attr):
+                with TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    cfg, _ = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=1)
+                    client = MockLLMClient(
+                        policy="always",
+                        rng=random.Random(0),
+                        options=list(cfg.options),
+                        always_label=cfg.options[0],
+                    )
+                    paths = execute_run(cfg, client, campaign_dir=root)
+                    meta = dict(read_meta(paths.meta_path))
+                    meta["run_status"] = "interrupted"
+                    meta["finished_at"] = None
+                    paths.meta_path.write_text(json.dumps(meta, indent=2, sort_keys=True))
+                    setattr(cfg, attr, value)
+                    with self.assertRaises(RunFailedError) as ctx:
+                        execute_run(cfg, client, campaign_dir=root)
+                    self.assertEqual(ctx.exception.error_class, "config")
+                    self.assertTrue(paths.pickle_path.exists())
+
+    def test_graph_hash_mismatch_fails_config(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=1)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            paths = execute_run(cfg, client, campaign_dir=root)
+            meta = dict(read_meta(paths.meta_path))
+            meta["run_status"] = "interrupted"
+            meta["finished_at"] = None
+            meta["adjacency_hash"] = "deadbeefdeadbeef"
+            paths.meta_path.write_text(json.dumps(meta, indent=2, sort_keys=True))
+            with self.assertRaises(RunFailedError) as ctx:
+                execute_run(cfg, client, campaign_dir=root)
+            self.assertEqual(ctx.exception.error_class, "config")
+
+    def test_truncated_jsonl_last_line_dropped(self):
+        from convention_topology.persistence import read_events
+
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "events.jsonl"
+            path.write_text('{"record_type":"interaction","t":1}\n{"record_type":"interaction","t":2')
+            rows = read_events(path)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["t"], 1)
+
+    def test_fingerprint_mismatch_fails_config(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=1)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            paths = execute_run(cfg, client, campaign_dir=root)
+            meta = dict(read_meta(paths.meta_path))
+            meta["run_status"] = "interrupted"
+            meta["finished_at"] = None
+            paths.meta_path.write_text(json.dumps(meta, indent=2, sort_keys=True))
+            cfg.protocol_fingerprint = "deadbeef"
+            with self.assertRaises(RunFailedError) as ctx:
+                execute_run(cfg, client, campaign_dir=root)
+            self.assertEqual(ctx.exception.error_class, "config")
+            self.assertTrue(paths.pickle_path.exists())
+
+    def test_interrupted_continues(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=4)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            seen = {"n": 0}
+
+            def hook(kind: str) -> None:
+                if kind == "after_interaction":
+                    seen["n"] += 1
+                    if seen["n"] == 1:
+                        raise StopRequested("killed")
+
+            paths = execute_run(cfg, client, campaign_dir=root, on_stop=hook)
+            meta = read_meta(paths.meta_path)
+            self.assertEqual(meta["run_status"], "interrupted")
+            self.assertEqual(meta["stop_reason"], "killed")
+            execute_run(cfg, client, campaign_dir=root)
+            done = read_meta(paths.meta_path)
+            self.assertEqual(done["run_status"], "completed")
+            events = read_events(paths.events_path)
+            ts = [row["t"] for row in events if row["record_type"] == "interaction"]
+            self.assertEqual(ts, list(range(1, len(ts) + 1)))
+
+    def test_injected_stop_after_attempt_does_not_duplicate(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, cm_k=2, phase2_horizon=3)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            flagged = {"stop": False}
+
+            def hook(kind: str) -> None:
+                if kind == "after_attempt" and not flagged["stop"]:
+                    flagged["stop"] = True
+                    raise StopRequested("killed")
+
+            paths = execute_run(cfg, client, campaign_dir=root, on_stop=hook)
+            self.assertEqual(read_meta(paths.meta_path)["run_status"], "interrupted")
+            execute_run(cfg, client, campaign_dir=root)
+            events = read_events(paths.events_path)
+            interactions = [row for row in events if row["record_type"] == "interaction"]
+            ts = [row["t"] for row in interactions]
+            self.assertEqual(ts, sorted(set(ts)))
+
+    def test_injected_stop_after_remaining_boundaries(self):
+        for kind in ("after_interaction", "after_pickle", "after_sidecar"):
+            with self.subTest(kind=kind):
+                with TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    cfg, _ = _cfg(PROGRAM_CM, root, n=8, cm_k=2, phase2_horizon=3)
+                    client = MockLLMClient(
+                        policy="always",
+                        rng=random.Random(0),
+                        options=list(cfg.options),
+                        always_label=cfg.options[0],
+                    )
+                    seen = {"n": 0}
+
+                    def hook(name: str) -> None:
+                        if name != kind:
+                            return
+                        seen["n"] += 1
+                        raise StopRequested("killed")
+
+                    paths = execute_run(cfg, client, campaign_dir=root, on_stop=hook)
+                    self.assertEqual(read_meta(paths.meta_path)["run_status"], "interrupted")
+                    execute_run(cfg, client, campaign_dir=root)
+                    events = read_events(paths.events_path)
+                    ts = [row["t"] for row in events if row["record_type"] == "interaction"]
+                    self.assertEqual(ts, sorted(set(ts)))
+                    self.assertEqual(ts, list(range(1, len(ts) + 1)))
+
+    def test_sigterm_handler_is_process_wide(self):
+        import signal
+
+        from convention_topology import run as run_mod
+
+        prev_term = signal.getsignal(signal.SIGTERM)
+        prev_int = signal.getsignal(signal.SIGINT)
+        try:
+            run_mod._PROCESS_STOP["reason"] = None
+            run_mod._SIGTERM_INSTALLED = False
+            run_mod.install_process_sigterm()
+            first = signal.getsignal(signal.SIGTERM)
+            run_mod.install_process_sigterm()
+            self.assertIs(signal.getsignal(signal.SIGTERM), first)
+            first(signal.SIGTERM, None)
+            self.assertEqual(run_mod.process_stop_reason(), "killed")
+        finally:
+            signal.signal(signal.SIGTERM, prev_term)
+            signal.signal(signal.SIGINT, prev_int)
+            run_mod._PROCESS_STOP["reason"] = None
+            run_mod._SIGTERM_INSTALLED = False
+
+    def test_jsonl_ahead_replay_advances_rng(self):
+        from convention_topology.run import _init_state, _pair, _replay_interactions
+        from convention_topology.tracker import update_dict, update_tracker
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=3)
+            control = _init_state(cfg)
+            behind = _init_state(cfg)
+            records = []
+            for t in range(1, 4):
+                p1, p2 = _pair(control.simulation, control.rng_pairing)
+                order = list(cfg.options)
+                control.rng_option.shuffle(order)
+                a1 = a2 = cfg.options[0]
+                payoff = 100
+                control.simulation[p1]["interactions"].append(p2)
+                control.simulation[p2]["interactions"].append(p1)
+                update_dict(control.simulation[p1], a1, a2, payoff)
+                update_dict(control.simulation[p2], a2, a1, payoff)
+                update_tracker(control.tracker, p1, p2, a1, a2, payoff)
+                records.append(
+                    {
+                        "record_type": "interaction",
+                        "t": t,
+                        "p1": p1,
+                        "p2": p2,
+                        "label_p1": a1,
+                        "label_p2": a2,
+                        "payoff_p1": payoff,
+                        "option_order_p1": list(order),
+                    }
+                )
+                if t == 1:
+                    p1b, p2b = _pair(behind.simulation, behind.rng_pairing)
+                    order_b = list(cfg.options)
+                    behind.rng_option.shuffle(order_b)
+                    behind.simulation[p1b]["interactions"].append(p2b)
+                    behind.simulation[p2b]["interactions"].append(p1b)
+                    update_dict(behind.simulation[p1b], a1, a2, payoff)
+                    update_dict(behind.simulation[p2b], a2, a1, payoff)
+                    update_tracker(behind.tracker, p1b, p2b, a1, a2, payoff)
+            self.assertEqual(len(behind.tracker["outcome"]), 1)
+            _replay_interactions(behind, records, cfg.options)
+            self.assertEqual(behind.rng_pairing.getstate(), control.rng_pairing.getstate())
+            self.assertEqual(behind.rng_option.getstate(), control.rng_option.getstate())
+            self.assertEqual(_pair(behind.simulation, behind.rng_pairing), _pair(control.simulation, control.rng_pairing))
+
+
+if __name__ == "__main__":
+    unittest.main()

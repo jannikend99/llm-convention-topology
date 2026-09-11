@@ -1,157 +1,73 @@
 #!/usr/bin/env python3
-"""CLI: run one emergence or CM experiment run.
-
-Thin dispatch (§0 principle 6): argument parsing + one call into
-`convention_topology.run.execute_run`, or a lightweight `--smoke` loop.
-"""
+"""CLI: run one counted cell. Always writes pickle, sidecar, and events."""
 
 from __future__ import annotations
 
 import argparse
-import random
+import asyncio
 from pathlib import Path
 
-from dotenv import load_dotenv
-
+from convention_topology.campaign import ensure_campaign_files
 from convention_topology.config import load_config, resolve_model
-from convention_topology.networks import get_interaction_network
-from convention_topology.orchestration import (
-    build_client,
-    build_run_config,
-    options_for_program,
-    retry_policy_for,
-    rewards as _rewards,
-)
-from convention_topology.prepared import make_prepared_population
-from convention_topology.persistence import read_meta
-from convention_topology.run import PROGRAM_CM, PROGRAM_EMERGENCE, execute_run
-from convention_topology.simulation import make_interaction_step, swap_committed
+from convention_topology.git_guard import DirtyWorktreeError, current_commit, require_clean_worktree
+from convention_topology.orchestration import build_client
+from convention_topology.persistence import campaign_root, read_meta
+from convention_topology.pool import options_for_program
+from convention_topology.run import PROGRAM_CM, PROGRAM_EMERGENCE, build_run_config, execute_run_async
 
 
-def run_smoke(config, model_spec, client, *, program, topology, cm_k, graph_seed, run_seed, max_interactions) -> None:
-    n = config.params.N
-    memory_size = config.params.memory_size_set[0]
-    opts = options_for_program(config, program)
-    rng = random.Random(run_seed)
-    rewards = _rewards(config)
-
-    if program == PROGRAM_CM:
-        simulation, tracker, convergence = make_prepared_population(
-            topology,
-            n=n,
-            graph_seed=graph_seed,
-            rewards=rewards,
-            options=opts,
-            memory_size=memory_size,
-            incumbent_index=int(config.params.incumbent_index),
-            degree=config.network.degree,
-        )
-        swap_committed(simulation, cm_k, rng)
-        committed_to = convergence["committed_to"]
-        shared_shuffle = True
-    else:
-        simulation = get_interaction_network(
-            topology, n=n, degree=config.network.degree, graph_seed=graph_seed
-        )
-        tracker = {"players": [], "answers": [], "outcome": []}
-        committed_to = None
-        shared_shuffle = False
-
-    step = make_interaction_step(
-        simulation,
-        client,
-        memory_size,
-        rewards,
-        opts,
-        rng,
-        committed_to=committed_to,
-        retry_policy=retry_policy_for(model_spec),
-        shared_shuffle=shared_shuffle,
-    )
-    print(f"program={program} model_id={model_spec.model_id} endpoint={model_spec.base_url or '(mock, no endpoint)'}")
-    for _ in range(max_interactions):
-        step(tracker)
-        p1_answer, p2_answer = tracker["answers"][-1]
-        print(f"t={len(tracker['outcome'])} labels=({p1_answer}, {p2_answer})")
-
-
-def run_full(config, model_spec, client, *, program, topology, cm_k, graph_seed, run_seed):
-    run_config = build_run_config(
-        config,
-        model_spec,
-        program=program,
-        topology=topology,
-        cm_k=cm_k,
-        graph_seed=graph_seed,
-        run_seed=run_seed,
-    )
-    print(
-        f"[start] program={program} model={model_spec.shorthand} topology={topology} "
-        f"k={cm_k} run_seed={run_seed}",
-        flush=True,
-    )
-    paths = execute_run(
-        run_config,
-        client,
-        data_dir=Path(config.paths.data),
-        logs_dir=Path(config.paths.logs),
-        retry_policy=retry_policy_for(model_spec),
-    )
-    meta = paths.meta_path
-    status = read_meta(meta)["run_status"] if meta.exists() else "unknown"
-    print(f"[done]  run_id={paths.pickle_path.stem} status={status} meta={paths.meta_path}", flush=True)
+REPO_ROOT = Path(__file__).resolve().parent
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run one emergence or CM convention-topology run.")
+    parser = argparse.ArgumentParser(description="Run one counted emergence or CM cell.")
     parser.add_argument("--program", required=True, choices=[PROGRAM_EMERGENCE, PROGRAM_CM])
     parser.add_argument("--model", required=True)
-    parser.add_argument("--topology", required=True, choices=["complete", "random_regular", "lattice"])
-    parser.add_argument("--k", type=int, default=0, dest="cm_k", help="CM size (required for --program cm).")
-    parser.add_argument("--seed", type=int, required=True, dest="run_seed")
-    parser.add_argument("--graph-seed", type=int, default=None)
-    parser.add_argument("--max-interactions", type=int, default=20)
-    parser.add_argument("--smoke", action="store_true", help="Cap interactions; skip persistence.")
+    parser.add_argument("--topology", required=True)
+    parser.add_argument("--k", type=int, default=None, dest="cm_k")
+    parser.add_argument("--seed-index", type=int, required=True)
     parser.add_argument("--config", default=None)
+    parser.add_argument("--artifact-root", default=None)
     parser.add_argument("--mock-policy", default="imitate_modal")
     args = parser.parse_args(argv)
 
-    if args.program == PROGRAM_CM and args.cm_k < 1:
-        parser.error("--k >= 1 is required for --program cm")
+    if args.program == PROGRAM_CM and (args.cm_k is None or args.cm_k < 1):
+        parser.error("--k is required for --program cm")
     if args.program == PROGRAM_EMERGENCE:
-        args.cm_k = 0
+        args.cm_k = None
 
-    load_dotenv()
+    try:
+        require_clean_worktree(REPO_ROOT)
+    except DirtyWorktreeError as exc:
+        print(str(exc), flush=True)
+        return 2
+
     config = load_config(args.config)
     model_spec = resolve_model(config, args.model)
-    opts = options_for_program(config, args.program)
-    client = build_client(model_spec, args.mock_policy, args.run_seed, opts)
-    graph_seed = args.graph_seed if args.graph_seed is not None else args.run_seed
-
-    if args.smoke:
-        run_smoke(
-            config,
-            model_spec,
-            client,
-            program=args.program,
-            topology=args.topology,
-            cm_k=args.cm_k,
-            graph_seed=graph_seed,
-            run_seed=args.run_seed,
-            max_interactions=args.max_interactions,
-        )
-        return 0
-
-    run_full(
+    campaign = str(config["run"]["campaign"])
+    root = campaign_root(
+        args.artifact_root if args.artifact_root is not None else config["run"]["artifact_root"],
+        campaign,
+        REPO_ROOT,
+    )
+    files = ensure_campaign_files(root, config)
+    cfg = build_run_config(
         config,
         model_spec,
-        client,
         program=args.program,
         topology=args.topology,
+        seed_index=args.seed_index,
         cm_k=args.cm_k,
-        graph_seed=graph_seed,
-        run_seed=args.run_seed,
+        pool_labels=files["pool"]["labels"],
+        pool_sha256=files["pool"]["sha256"],
+        code_commit=current_commit(REPO_ROOT),
+        artifact_root=str(root),
     )
+    options = options_for_program(files["pool"]["labels"], args.program)
+    client = build_client(model_spec, args.mock_policy, cfg.model_seed, options)
+    paths = asyncio.run(execute_run_async(cfg, client, campaign_dir=root))
+    status = read_meta(paths.meta_path)["run_status"]
+    print(f"[done] run_id={paths.pickle_path.stem} status={status}", flush=True)
     return 0
 
 

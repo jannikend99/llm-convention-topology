@@ -20,7 +20,7 @@ from scipy.stats import chi2
 from statsmodels.tools.sm_exceptions import PerfectSeparationError
 
 MIN_N_FOR_INFERENCE = 8
-K_GRID = list(range(1, 7))
+K_GRID = [2, 4, 6, 8, 10, 12]
 
 _FIT_EXCEPTIONS = (LinAlgError, PerfectSeparationError, ValueError)
 

@@ -1,84 +1,253 @@
-network:
-  network_type: complete            # complete | random_regular | lattice (CLI-overridable)
-  degree: 4
-minority:
-  minority_size_set: [1, 2, 3, 4, 5, 6]
-  committment_index: 1              # Ashery compat; CM uses incumbent_index + committed_to
-params:
+protocol:
+  N: 48
+  H: 12
+  string_length: 5
+  W_emergence: 10
+  W_cm: 2
+  gate_threshold: 0.95
+  gate_window: 144
+  cap_phase1: 5000
+  phase2_horizon: 1000
+  rewards_mismatch: -50
+  rewards_match: 100
+  success_rule: payoff_gt_5
+  retry_max_attempts: 3
   temperature: 0.5
-  total_interactions: 1000          # CM Phase 2 horizon
-  max_phase1_interactions: 5000
-  N: 24
-  convergence_time: 72              # 3N
-  convergence_threshold: 0.95
-  rewards_set: [[-50, 100]]
-  memory_size_set: [5]
-  # Ashery split: W=10 emergence (Fig. 1) vs W=2 CM / bias
-  # LOCK (2026-07-27): always Ashery plotter set — never A–J (A-primacy confound; see WORKING §17)
-  options_emergence: [Q, M, X, Y, F, J, P, R, C, D]
-  options_cm: [Q, M]
-  incumbent_index: 0                # prepared CM: options_cm[0] incumbent, other committed_to
+
+network:
+  topologies: [mixing, random_regular, lattice, watts_strogatz, barabasi_albert]
+  degree: 4
+  ws_k: 4
+  ws_p: 0.1
+  ba_m: 2
+  require_connected: true
+
+minority:
+  k_set: [2, 4, 6, 8, 10, 12]
+  mode: swap
+
+pool:
+  seed: 20260910
+
 run:
-  base_seed: 20260713               # grid-seed derivation root
-  checkpoint_every: 50
-  workers: 1
-  pilot_attempted_per_topology: 12
-  main_eligible_targets: {complete: [15, 20], random_regular: [8, 10], lattice: [8, 10]}
-  attempted_cap_factor: 3
-models:                             # registry (§4); active model chosen by CLI --model
-  llama31:
-    # Proof / Llama-vs-Mistral emergence track (2026-07-28): Together 3.3 serverless.
-    # Thesis main study may switch to self-hosted 3.1 @ Stanford — document model string in Methods.
-    provider: together
-    model_id: meta-llama/Llama-3.3-70B-Instruct-Turbo
-    base_url: https://api.together.xyz/v1
-    api_key_env: TOGETHER_API_KEY
-    temperature: 0.5
-    max_tokens: 2000
-  qwen25:
-    provider: openrouter
-    model_id: qwen/qwen-2.5-72b-instruct
-    base_url: https://openrouter.ai/api/v1
-    api_key_env: OPENROUTER_API_KEY
-    temperature: 0.5
+  base_seed: 20260910
+  seed_scheme_version: 1
+  schema_version: 1
+  prompt_template_version: v2-ashery-json-enum
+  attempted_per_cell: 32
+  sampling_plan: fixed_attempted
+  checkpoint_every: 1
+  campaign: slate-a
+  artifact_root: ""
+
+jobs:
+  models: []
+  programs: [emergence, cm]
+
+serve:
+  provider: openai_compat
+  base_url: http://127.0.0.1:8000/v1
+  api_key: EMPTY
+  serve_wait_timeout: 600
+
+models:
+  llama4_scout:
+    model_id: meta-llama/Llama-4-Scout-17B-16E-Instruct
+    revision: placeholder-revision
+    shorthand: llama4_scout
+    slate: A
+    thinking: false
+    thinking_always_on: false
+    reasoning_effort: null
     max_tokens: 512
-    openrouter_provider:
-      allow_fallbacks: false
-      only: ["deepinfra"]  # pinned C-05 2026-07-20 (only deepinfra|novita; novita 400s)
-  gpt54:
-    provider: openai
-    model_id: TBD-doug
-    base_url: https://api.openai.com/v1
-    api_key_env: OPENAI_API_KEY
-    temperature: 0.5
+    dtype: bfloat16
+    quantization: null
+    gpus: 1
+    tp: 1
+    max_model_len: 8192
+    max_concurrent_runs: 4
+    in_flight_limit: 8
+    max_num_seqs: 16
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+  gemma4_31b:
+    model_id: google/gemma-4-31B-it
+    revision: placeholder-revision
+    shorthand: gemma4_31b
+    slate: A
+    thinking: false
+    thinking_always_on: false
+    reasoning_effort: null
     max_tokens: 512
-  claude55:
-    provider: anthropic
-    model_id: TBD-doug
-    base_url: https://api.anthropic.com/v1/
-    api_key_env: ANTHROPIC_API_KEY
-    temperature: 0.5
+    dtype: bfloat16
+    quantization: null
+    gpus: 1
+    tp: 1
+    max_model_len: 8192
+    max_concurrent_runs: 4
+    in_flight_limit: 8
+    max_num_seqs: 16
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+  qwen38_27b:
+    model_id: Qwen/Qwen3.8-27B
+    revision: placeholder-revision
+    shorthand: qwen38_27b
+    slate: A
+    thinking: false
+    thinking_always_on: false
+    reasoning_effort: null
     max_tokens: 512
-  gemini35:
-    provider: google
-    model_id: gemini-3.5-flash
-    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
-    api_key_env: GEMINI_API_KEY
-    temperature: 0.5
+    dtype: bfloat16
+    quantization: null
+    gpus: 1
+    tp: 1
+    max_model_len: 8192
+    max_concurrent_runs: 4
+    in_flight_limit: 8
+    max_num_seqs: 16
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+  mistral_small4:
+    model_id: mistralai/Mistral-Small-4-119B-2603
+    revision: placeholder-revision
+    shorthand: mistral_small4
+    slate: A
+    thinking: false
+    thinking_always_on: false
+    reasoning_effort: null
     max_tokens: 512
-  mistralnemo:
-    provider: deepinfra
-    model_id: mistralai/Mistral-Nemo-Instruct-2407
-    base_url: https://api.deepinfra.com/v1/openai
-    api_key_env: DEEPINFRA_API_KEY
-    temperature: 0.5
-    # Match llama31 decoding headroom (proof track D6; same CoT+value prompt)
-    max_tokens: 2000
+    dtype: bfloat16
+    quantization: null
+    gpus: 1
+    tp: 1
+    max_model_len: 8192
+    max_concurrent_runs: 4
+    in_flight_limit: 8
+    max_num_seqs: 16
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+  llama33_70b:
+    model_id: meta-llama/Llama-3.3-70B-Instruct
+    revision: placeholder-revision
+    shorthand: llama33_70b
+    slate: A
+    thinking: false
+    thinking_always_on: false
+    reasoning_effort: null
+    max_tokens: 512
+    dtype: bfloat16
+    quantization: null
+    gpus: 1
+    tp: 1
+    max_model_len: 8192
+    max_concurrent_runs: 4
+    in_flight_limit: 8
+    max_num_seqs: 16
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
   mock:
-    provider: mock
     model_id: mock
-    base_url: ""
-    api_key_env: ""
-    temperature: 0.5
+    revision: mock
+    shorthand: mock
+    slate: A
+    thinking: false
+    thinking_always_on: false
+    reasoning_effort: null
     max_tokens: 512
-paths: {data: data, logs: logs, outputs: outputs}   # data: run_paths() appends runs/{model}/{topology} itself (§6)
+    dtype: null
+    quantization: null
+    gpus: 0
+    tp: 1
+    max_model_len: 8192
+    max_concurrent_runs: 8
+    in_flight_limit: 16
+    max_num_seqs: 16
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+  gemma4_31b_think:
+    model_id: google/gemma-4-31B-it
+    revision: placeholder-revision
+    shorthand: gemma4_31b_think
+    slate: B
+    thinking: true
+    thinking_always_on: false
+    reasoning_effort: medium
+    max_tokens: 1024
+    dtype: bfloat16
+    quantization: null
+    gpus: 1
+    tp: 1
+    max_model_len: 8192
+    max_concurrent_runs: 2
+    in_flight_limit: 4
+    max_num_seqs: 8
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+  qwen38_27b_think:
+    model_id: Qwen/Qwen3.8-27B
+    revision: placeholder-revision
+    shorthand: qwen38_27b_think
+    slate: B
+    thinking: true
+    thinking_always_on: false
+    reasoning_effort: medium
+    max_tokens: 1024
+    dtype: bfloat16
+    quantization: null
+    gpus: 1
+    tp: 1
+    max_model_len: 8192
+    max_concurrent_runs: 2
+    in_flight_limit: 4
+    max_num_seqs: 8
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+  ministral3_14b:
+    model_id: mistralai/Ministral-3-14B-Reasoning-2512
+    revision: placeholder-revision
+    shorthand: ministral3_14b
+    slate: B
+    thinking: true
+    thinking_always_on: true
+    reasoning_effort: medium
+    max_tokens: 1024
+    dtype: bfloat16
+    quantization: null
+    gpus: 1
+    tp: 1
+    max_model_len: 8192
+    max_concurrent_runs: 2
+    in_flight_limit: 4
+    max_num_seqs: 8
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+  qwen3_30b_a3b_think:
+    model_id: Qwen/Qwen3-30B-A3B-Thinking-2507
+    revision: placeholder-revision
+    shorthand: qwen3_30b_a3b_think
+    slate: B
+    thinking: true
+    thinking_always_on: true
+    reasoning_effort: medium
+    max_tokens: 1024
+    dtype: bfloat16
+    quantization: null
+    gpus: 1
+    tp: 1
+    max_model_len: 8192
+    max_concurrent_runs: 2
+    in_flight_limit: 4
+    max_num_seqs: 8
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4

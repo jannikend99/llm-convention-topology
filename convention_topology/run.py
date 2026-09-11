@@ -1,458 +1,1005 @@
-"""Run executors: emergence (organic Phase 1) and CM (prepared + Phase 2).
-
-Ashery split: `bias_runner`-style emergence vs `committed_runner`-style CM on
-prepared populations. No sequential Phase 1→2 on the same trajectory.
-"""
+"""Counted run executor: one async engine, checkpoint-every-1, retry D split."""
 
 from __future__ import annotations
 
+import asyncio
+import fcntl
+import os
 import random
-from dataclasses import dataclass
+import signal
+import sys
+import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
-from convention_topology.gate import evaluate_phase1_gate, trailing_success_rate
-from convention_topology.llm import LLMClient, LLMResponse, RetryPolicy, RunFailedError
-from convention_topology.networks import adjacency_hash, get_interaction_network
+import httpx
+
+from convention_topology.config import ModelSpec, config_hash, protocol_fingerprint
+from convention_topology.gate import evaluate_phase1_gate, has_tracker_converged
+from convention_topology.json_output import ParseError, parse_decision
+from convention_topology.llm import (
+    AsyncClientAdapter,
+    AsyncLLMClient,
+    RunFailedError,
+    classify_error,
+)
+from convention_topology.networks import adjacency_hash, get_interaction_network, graph_stats
 from convention_topology.persistence import (
+    SCHEMA_VERSION,
     EventWriter,
+    PersistenceError,
     RunPaths,
     build_run_id,
+    empty_sidecar,
+    encode_run_key,
     ensure_run_dirs,
     load_run_pickle,
+    read_events,
     read_meta,
     run_paths,
     save_run_pickle,
     write_meta,
 )
-from convention_topology.prepared import make_prepared_population
-from convention_topology.simulation import make_interaction_step, run_phase2, swap_committed
-from convention_topology.tracker import empty_tracker, modal_label_in_window
+from convention_topology.pool import options_for_program
+from convention_topology.prepared import (
+    PreparedInitError,
+    assert_prepared,
+    make_prepared_population,
+)
+from convention_topology.prompting import (
+    PROMPT_TEMPLATE_VERSION,
+    build_user_prompt,
+    prompt_template_hash,
+    rendered_prompt_hash,
+)
+from convention_topology.seeds import (
+    ENVIRONMENT_TAGS,
+    SEED_SCHEME_VERSION,
+    attempt_seed,
+    environment_seed,
+    graph_seed,
+    model_seed,
+    substream,
+)
+from convention_topology.simulation import swap_committed
+from convention_topology.tracker import empty_tracker, get_outcome, update_dict, update_tracker
 
 PROGRAM_EMERGENCE = "emergence"
 PROGRAM_CM = "cm"
 
+StopHook = Callable[[str], None]
 
-def _emit_progress(
-    events: EventWriter,
-    tracker: dict,
-    phase: str,
-    window: int,
-    *,
-    run_id: str | None = None,
-    console: bool = True,
-) -> None:
-    t = len(tracker["outcome"])
-    if t % 10 != 0:
+_PROCESS_STOP: dict[str, str | None] = {"reason": None}
+_SIGTERM_INSTALLED = False
+
+
+def process_stop_reason() -> str | None:
+    return _PROCESS_STOP["reason"]
+
+
+def install_process_sigterm() -> None:
+    """Install one process-wide SIGTERM/SIGINT handler shared by concurrent runs."""
+    global _SIGTERM_INSTALLED
+    if _SIGTERM_INSTALLED:
         return
-    rolling = trailing_success_rate(tracker["outcome"], window)
-    dominant = _dominant_share(tracker, window)
-    events.emit(
-        {
-            "type": f"{phase}_progress",
-            "t": t,
-            "phase": phase,
-            "rolling_success": rolling,
-            "dominant_share": dominant,
-        }
-    )
-    # Terminal heartbeat every 50 interactions (events still every 10).
-    if console and run_id is not None and t % 50 == 0:
-        dom = f"{dominant:.2f}" if dominant is not None else "n/a"
-        roll = f"{rolling:.2f}" if rolling is not None else "n/a"
-        print(
-            f"[progress] {run_id}  {phase} t={t}  rolling_success={roll}  dominant_share={dom}",
-            flush=True,
-        )
+
+    def _handler(signum, frame):
+        _PROCESS_STOP["reason"] = "killed"
+
+    signal.signal(signal.SIGTERM, _handler)
+    signal.signal(signal.SIGINT, _handler)
+    _SIGTERM_INSTALLED = True
 
 
-def _dominant_share(tracker: dict, window: int) -> float | None:
-    answers = tracker["answers"]
-    if len(answers) < window:
-        return None
-    labels = [label for pair in answers[-window:] for label in pair]
-    if not labels:
-        return None
-    dominant = modal_label_in_window(tracker, window)
-    return labels.count(dominant) / len(labels)
+class StopRequested(BaseException):
+    """Injected or SIGTERM persistence-boundary stop."""
 
 
-def default_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-@dataclass(frozen=True)
+@dataclass
 class RunConfig:
     program: str
     model_shorthand: str
     model_id: str
+    model_revision: str
     endpoint_base_url: str
+    provider: str
     topology: str
+    campaign: str
+    seed_index: int
     graph_seed: int
-    run_seed: int
+    environment_seed: int
+    model_seed: int
+    base_seed: int
     config_hash: str
+    protocol_fingerprint: str
     prompt_template_version: str
+    prompt_template_hash: str
     code_commit: str
     options: Sequence[str]
+    label_pool: Sequence[str]
+    pool_seed: int
+    pool_sha256: str
     rewards: Sequence[int] = (-50, 100)
-    memory_size: int = 5
-    n: int = 24
-    cm_k: int = 0
+    memory_size: int = 12
+    n: int = 48
+    cm_k: int | None = None
     incumbent_index: int = 0
-    convergence_threshold: float = 0.95
+    gate_window: int = 144
     max_phase1_interactions: int = 5000
     phase2_horizon: int = 1000
-    checkpoint_every: int = 50
+    checkpoint_every: int = 1
     degree: int = 4
+    ws_k: int = 4
+    ws_p: float = 0.1
+    ba_m: int = 2
+    retry_max_attempts: int = 3
+    temperature: float = 0.5
+    max_tokens: int = 512
+    serve_wait_timeout: float = 600.0
+    slate: str = "A"
+    thinking: bool = False
+    thinking_always_on: bool = False
+    reasoning_effort: str | None = None
+    sampling_plan: str = "fixed_attempted"
+    attempted_per_cell: int = 32
+    dtype: str | None = None
+    quantization: str | None = None
+    tensor_parallel: int = 1
+    max_concurrent_runs: int = 1
+    in_flight_limit: int = 1
+    max_num_seqs: int = 1
+    fallback_from: str | None = None
+    schema_version: int = SCHEMA_VERSION
+    artifact_root: str = ""
+    slurm_job_id: str | None = None
+    hostname: str | None = None
 
 
-class _CountingClient:
-    def __init__(self, client: LLMClient, on_response: Callable[[LLMResponse], None] | None = None):
-        self._client = client
-        self.calls = 0
-        self._on_response = on_response
-
-    def complete(self, system: str, user: str) -> LLMResponse:
-        self.calls += 1
-        response = self._client.complete(system, user)
-        if self._on_response is not None:
-            self._on_response(response)
-        return response
+def default_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _base_meta(
+def build_run_config(
+    config: Mapping[str, Any],
+    model_spec: ModelSpec,
     *,
+    program: str,
+    topology: str,
+    seed_index: int,
+    cm_k: int | None,
+    pool_labels: Sequence[str],
+    pool_sha256: str,
+    code_commit: str,
+    artifact_root: str = "",
+) -> RunConfig:
+    protocol = config["protocol"]
+    network = config["network"]
+    run = config["run"]
+    if program == PROGRAM_EMERGENCE:
+        cm_k = None
+    options = options_for_program(pool_labels, program)
+    return RunConfig(
+        program=program,
+        model_shorthand=model_spec.shorthand,
+        model_id=model_spec.model_id,
+        model_revision=model_spec.revision,
+        endpoint_base_url=model_spec.base_url,
+        provider=model_spec.provider,
+        topology=topology,
+        campaign=str(run["campaign"]),
+        seed_index=seed_index,
+        graph_seed=graph_seed(int(run["base_seed"]), topology),
+        environment_seed=environment_seed(int(run["base_seed"]), program, topology, cm_k, seed_index),
+        model_seed=model_seed(int(run["base_seed"]), model_spec.model_id, program, topology, cm_k, seed_index),
+        base_seed=int(run["base_seed"]),
+        config_hash=config_hash(config),
+        protocol_fingerprint=protocol_fingerprint(config),
+        prompt_template_version=str(run["prompt_template_version"]),
+        prompt_template_hash=prompt_template_hash(),
+        code_commit=code_commit,
+        options=options,
+        label_pool=list(pool_labels),
+        pool_seed=int(config["pool"]["seed"]),
+        pool_sha256=pool_sha256,
+        rewards=(int(protocol["rewards_mismatch"]), int(protocol["rewards_match"])),
+        memory_size=int(protocol["H"]),
+        n=int(protocol["N"]),
+        cm_k=cm_k,
+        incumbent_index=0,
+        gate_window=3 * int(protocol["N"]),
+        max_phase1_interactions=int(protocol["cap_phase1"]),
+        phase2_horizon=int(protocol["phase2_horizon"]),
+        checkpoint_every=int(run["checkpoint_every"]),
+        degree=int(network["degree"]),
+        ws_k=int(network["ws_k"]),
+        ws_p=float(network["ws_p"]),
+        ba_m=int(network["ba_m"]),
+        retry_max_attempts=int(protocol["retry_max_attempts"]),
+        temperature=float(protocol["temperature"]),
+        max_tokens=int(model_spec.max_tokens),
+        serve_wait_timeout=float(config["serve"]["serve_wait_timeout"]),
+        slate=model_spec.slate,
+        thinking=model_spec.thinking,
+        thinking_always_on=model_spec.thinking_always_on,
+        reasoning_effort=model_spec.reasoning_effort,
+        sampling_plan=str(run["sampling_plan"]),
+        attempted_per_cell=int(run["attempted_per_cell"]),
+        dtype=model_spec.dtype,
+        quantization=model_spec.quantization,
+        tensor_parallel=model_spec.tp,
+        max_concurrent_runs=model_spec.max_concurrent_runs,
+        in_flight_limit=model_spec.in_flight_limit,
+        max_num_seqs=model_spec.max_num_seqs,
+        fallback_from=model_spec.fallback_from,
+        schema_version=int(run["schema_version"]),
+        artifact_root=artifact_root,
+        slurm_job_id=os.environ.get("SLURM_JOB_ID"),
+        hostname=os.environ.get("HOSTNAME") or os.uname().nodename,
+    )
+
+
+class FileLock:
+    def __init__(self, path: Path):
+        self.path = path
+        self._handle = None
+
+    def acquire(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._handle = self.path.open("a+")
+        try:
+            fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise PersistenceError(f"another live writer owns {self.path}") from exc
+
+    def release(self) -> None:
+        if self._handle is not None:
+            fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
+            self._handle.close()
+            self._handle = None
+
+
+def models_health_ok(base_url: str, timeout: float = 2.0) -> bool:
+    if not base_url:
+        return True
+    root = base_url.rstrip("/")
+    if root.endswith("/v1"):
+        url = root + "/models"
+    else:
+        url = root + "/v1/models"
+    try:
+        response = httpx.get(url, timeout=timeout)
+        return response.status_code < 500
+    except httpx.HTTPError:
+        return False
+
+
+@dataclass
+class RunState:
+    simulation: dict[int, dict]
+    tracker: dict[str, list]
+    convergence: dict[str, Any]
+    rng_pairing: random.Random
+    rng_option: random.Random
+    committed_ids: list[int]
+    n_api_calls: int = 0
+    n_retries: int = 0
+    n_skipped_cm_turns: int = 0
+    wait_on_model_ms: int = 0
+    graph_draw_attempts: int = 1
+    prepared_state_valid: bool | None = None
+    started_at: str = field(default_factory=default_now)
+    run_segments: list[dict[str, Any]] = field(default_factory=list)
+    last_checkpoint_t: int = 0
+
+
+def _pair(simulation: dict[int, dict], rng: random.Random) -> tuple[int, int]:
+    p1 = rng.choice(list(simulation.keys()))
+    p2 = rng.choice(simulation[p1]["neighbours"])
+    return p1, p2
+
+
+def _sidecar(cfg: RunConfig, run_id: str, run_key: dict, state: RunState, *, status: str, stop_reason: str | None, error_class: str | None, extra: dict[str, Any]) -> dict[str, Any]:
+    stats = graph_stats(state.simulation)
+    meta = empty_sidecar()
+    W = len(cfg.options)
+    topology = cfg.topology
+    meta.update(
+        {
+            "run_id": run_id,
+            "campaign": cfg.campaign,
+            "run_key": run_key,
+            "program": cfg.program,
+            "init_mode": "organic" if cfg.program == PROGRAM_EMERGENCE else "prepared",
+            "topology": cfg.topology,
+            "cell_key": run_key["cell_key"],
+            "seed_index": cfg.seed_index,
+            "slate": cfg.slate,
+            "sampling_plan": cfg.sampling_plan,
+            "attempted_per_cell": cfg.attempted_per_cell,
+            "replaced": False,
+            "adaptive_targeting": False,
+            "N": cfg.n,
+            "H": cfg.memory_size,
+            "W": W,
+            "string_length": 5,
+            "edge_count": stats["edge_count"],
+            "realized_mean_degree": stats["realized_mean_degree"],
+            "nominal_degree": cfg.n - 1 if topology == "mixing" else 4,
+            "ws_k": cfg.ws_k if topology == "watts_strogatz" else None,
+            "ws_p": cfg.ws_p if topology == "watts_strogatz" else None,
+            "ba_m": cfg.ba_m if topology == "barabasi_albert" else None,
+            "graph_draw_attempts": state.graph_draw_attempts,
+            "graph_connected": stats["graph_connected"],
+            "lattice_kind": "ring_degree4" if topology == "lattice" else None,
+            "cm_k": cfg.cm_k,
+            "cm_mode": "swap",
+            "pairing_rule": "random_agent_then_neighbor",
+            "rewards_match": cfg.rewards[1],
+            "rewards_mismatch": cfg.rewards[0],
+            "success_rule": "payoff_gt_5",
+            "gate_threshold": 0.95,
+            "gate_window": cfg.gate_window,
+            "cap_phase1": cfg.max_phase1_interactions if cfg.program == PROGRAM_EMERGENCE else None,
+            "phase2_horizon": cfg.phase2_horizon if cfg.program == PROGRAM_CM else None,
+            "retry_max_attempts": cfg.retry_max_attempts,
+            "temperature": cfg.temperature,
+            "max_tokens": cfg.max_tokens,
+            "top_p": None,
+            "top_k": None,
+            "json_schema": True,
+            "response_format": "json_schema",
+            "label_pool": list(cfg.label_pool),
+            "pool_seed": cfg.pool_seed,
+            "pool_sha256": cfg.pool_sha256,
+            "options": list(cfg.options),
+            "incumbent_index": cfg.incumbent_index if cfg.program == PROGRAM_CM else None,
+            "incumbent_label": state.convergence.get("incumbent_label"),
+            "committed_to": state.convergence.get("committed_to"),
+            "committed_ids": list(state.committed_ids),
+            "model_id": cfg.model_id,
+            "model_revision": cfg.model_revision,
+            "model_shorthand": cfg.model_shorthand,
+            "served_model_name": cfg.model_id,
+            "thinking": cfg.thinking,
+            "reasoning_effort": cfg.reasoning_effort,
+            "thinking_always_on": cfg.thinking_always_on,
+            "fallback_applied": bool(cfg.fallback_from),
+            "fallback_from": cfg.fallback_from,
+            "provider": cfg.provider if cfg.provider != "mock" else "openai_compat",
+            "endpoint_base_url": cfg.endpoint_base_url or "http://127.0.0.1:0/v1",
+            "cloud_credential_used": False,
+            "vllm_version": None,
+            "torch_version": None,
+            "python_version": sys.version.split()[0],
+            "dtype": cfg.dtype,
+            "quantization": cfg.quantization,
+            "tensor_parallel": cfg.tensor_parallel,
+            "gpu_ids": None,
+            "gpu_type": None,
+            "max_concurrent_runs": cfg.max_concurrent_runs,
+            "in_flight_limit": cfg.in_flight_limit,
+            "max_num_seqs": cfg.max_num_seqs,
+            "homogeneous": True,
+            "graph_seed": cfg.graph_seed,
+            "environment_seed": cfg.environment_seed,
+            "model_seed": cfg.model_seed,
+            "base_seed": cfg.base_seed,
+            "seed_scheme_version": SEED_SCHEME_VERSION,
+            "environment_substream_tags": list(ENVIRONMENT_TAGS),
+            "adjacency_hash": adjacency_hash(state.simulation),
+            "prompt_template_version": cfg.prompt_template_version or PROMPT_TEMPLATE_VERSION,
+            "prompt_template_hash": cfg.prompt_template_hash,
+            "schema_version": cfg.schema_version,
+            "config_hash": cfg.config_hash,
+            "code_commit": cfg.code_commit,
+            "protocol_fingerprint": cfg.protocol_fingerprint,
+            "chat_template_hash": None,
+            "slurm_job_id": cfg.slurm_job_id,
+            "hostname": cfg.hostname,
+            "run_segments": list(state.run_segments),
+            "checkpoint_every": cfg.checkpoint_every,
+            "last_checkpoint_t": state.last_checkpoint_t,
+            "artifact_root": cfg.artifact_root,
+            "run_status": status,
+            "stop_reason": stop_reason,
+            "error_class": error_class,
+            "gate_passed": extra.get("gate_passed"),
+            "prepared_state_valid": state.prepared_state_valid,
+            "t_gate": extra.get("t_gate"),
+            "t_phase1_end": extra.get("t_phase1_end"),
+            "t_cm_start": 0 if cfg.program == PROGRAM_CM else None,
+            "started_at": state.started_at,
+            "finished_at": extra.get("finished_at"),
+            "n_interactions": len(state.tracker["outcome"]),
+            "n_api_calls": state.n_api_calls,
+            "n_retries": state.n_retries,
+            "n_skipped_cm_turns": state.n_skipped_cm_turns,
+            "wait_on_model_ms": state.wait_on_model_ms,
+            "n_models_in_run": 1,
+        }
+    )
+    if cfg.provider == "mock":
+        meta["provider"] = "openai_compat"
+    return meta
+
+
+def _checkpoint(paths: RunPaths, cfg: RunConfig, run_id: str, run_key: dict, state: RunState, **kwargs) -> None:
+    t = len(state.tracker["outcome"])
+    state.last_checkpoint_t = t
+    save_run_pickle(
+        paths.pickle_path,
+        state.simulation,
+        state.tracker,
+        state.convergence,
+        rng_states={
+            "pairing": state.rng_pairing.getstate(),
+            "option": state.rng_option.getstate(),
+        },
+    )
+    write_meta(paths.meta_path, _sidecar(cfg, run_id, run_key, state, **kwargs))
+
+
+def _resume_gates(cfg: RunConfig, meta: Mapping[str, Any], state: RunState) -> None:
+    checks = {
+        "protocol_fingerprint": cfg.protocol_fingerprint,
+        "prompt_template_hash": cfg.prompt_template_hash,
+        "pool_sha256": cfg.pool_sha256,
+        "adjacency_hash": adjacency_hash(state.simulation),
+        "seed_scheme_version": SEED_SCHEME_VERSION,
+        "model_revision": cfg.model_revision,
+        "schema_version": cfg.schema_version,
+    }
+    for key, expected in checks.items():
+        if meta.get(key) != expected:
+            raise RunFailedError(f"resume blocked: {key} mismatch", error_class="config")
+
+
+async def _decision(
+    *,
+    cfg: RunConfig,
+    state: RunState,
+    client: AsyncLLMClient,
+    prompt: str,
+    options: Sequence[str],
     run_id: str,
-    config: RunConfig,
-    simulation: dict,
-    convergence: dict,
-    run_status: str,
-    started_at: str,
-    finished_at: str | None,
-    n_api_calls: int,
-    n_retries: int,
-) -> dict:
-    eligibility = 1 if convergence.get("converged_index") is not None else 0
-    if config.program == PROGRAM_CM and run_status == "completed":
-        eligibility = 1
+    t: int,
+    agent_id: int,
+    partner_id: int,
+    option_order: Sequence[str],
+    events: EventWriter,
+    health: Callable[[], bool],
+    sleep: Callable[[float], Any],
+    on_stop: StopHook | None,
+    limiter: asyncio.Semaphore | None,
+) -> tuple[str, str]:
+    decision_id = f"{t}:{agent_id}"
+    consuming = 0
+    attempt_index = 0
+    serve_wait_start = time.monotonic()
+    prompt_sha256 = rendered_prompt_hash(prompt)
+    while True:
+        if on_stop:
+            on_stop("before_attempt")
+        attempt_index += 1
+        if cfg.provider != "mock" and not health():
+            t_start = default_now()
+            wait_t0 = time.monotonic()
+            elapsed = time.monotonic() - serve_wait_start
+            sleep_for = 0.0 if elapsed >= cfg.serve_wait_timeout else min(1.0, cfg.serve_wait_timeout - elapsed)
+            if sleep_for > 0:
+                await sleep(sleep_for)
+            duration_ms = int((time.monotonic() - wait_t0) * 1000)
+            state.wait_on_model_ms += duration_ms
+            row = _attempt_row(
+                cfg, run_id, decision_id, t, agent_id, partner_id, attempt_index, option_order,
+                schema_valid=False, error_class="transport", raw="", enum_label=None, reason=None,
+                duration_ms=duration_ms, http_status=None, finish_reason=None, usage={},
+                prompt_sha256=prompt_sha256, t_start=t_start, t_end=default_now(),
+            )
+            events.emit(row)
+            if on_stop:
+                on_stop("after_attempt")
+            if elapsed >= cfg.serve_wait_timeout:
+                raise RunFailedError("serve wait timeout", error_class="serve_startup")
+            continue
+        t_start = default_now()
+        t0 = time.monotonic()
+        try:
+            if limiter is not None:
+                async with limiter:
+                    response = await client.complete(prompt, options=options)
+            else:
+                response = await client.complete(prompt, options=options)
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            t_end = default_now()
+            state.n_api_calls += 1
+            state.wait_on_model_ms += duration_ms
+            value, reason = parse_decision(response.text, options)
+            row = _attempt_row(
+                cfg, run_id, decision_id, t, agent_id, partner_id, attempt_index, option_order,
+                schema_valid=True, error_class=None, raw=response.text, enum_label=value, reason=reason,
+                duration_ms=duration_ms, http_status=response.http_status, finish_reason=response.finish_reason,
+                usage=response.usage, reasoning=response.reasoning,
+                prompt_sha256=prompt_sha256, t_start=t_start, t_end=t_end,
+            )
+            events.emit(row)
+            if on_stop:
+                on_stop("after_attempt")
+            return value, row["attempt_id"]
+        except Exception as exc:
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            t_end = default_now()
+            state.n_api_calls += 1
+            state.wait_on_model_ms += duration_ms
+            error_class = classify_error(exc)
+            consuming += 1
+            state.n_retries += 1
+            raw = getattr(getattr(exc, "response", None), "text", "") if False else str(getattr(exc, "text", "") or "")
+            if isinstance(exc, ParseError) and hasattr(exc, "args"):
+                raw = ""
+            row = _attempt_row(
+                cfg, run_id, decision_id, t, agent_id, partner_id, attempt_index, option_order,
+                schema_valid=False, error_class=error_class, raw=raw, enum_label=None, reason=None,
+                duration_ms=duration_ms, http_status=getattr(exc, "status_code", None), finish_reason=None,
+                usage={}, prompt_sha256=prompt_sha256, t_start=t_start, t_end=t_end,
+            )
+            events.emit(row)
+            if on_stop:
+                on_stop("after_attempt")
+            if consuming >= cfg.retry_max_attempts:
+                raise RunFailedError("decision attempts exhausted", error_class="attempts_exhausted") from exc
+            continue
+
+
+def _attempt_row(
+    cfg: RunConfig,
+    run_id: str,
+    decision_id: str,
+    t: int,
+    agent_id: int,
+    partner_id: int,
+    attempt_index: int,
+    option_order: Sequence[str],
+    **kwargs,
+) -> dict[str, Any]:
+    attempt_id = f"{decision_id}:{attempt_index}"
+    now = default_now()
     return {
+        "schema_version": cfg.schema_version,
+        "record_type": "llm_attempt",
         "run_id": run_id,
-        "program": config.program,
-        "init_mode": "organic" if config.program == PROGRAM_EMERGENCE else "prepared",
-        "topology": config.topology,
-        "cm_k": config.cm_k,
-        "options": list(config.options),
-        "incumbent_index": config.incumbent_index if config.program == PROGRAM_CM else None,
-        "model_id": config.model_id,
-        "model_shorthand": config.model_shorthand,
-        "endpoint_base_url": config.endpoint_base_url,
-        "graph_seed": config.graph_seed,
-        "run_seed": config.run_seed,
-        "adjacency_hash": adjacency_hash(simulation),
-        "t_gate": convergence.get("converged_index"),
-        "t_phase1_end": convergence.get("converged_index"),
-        "eligibility": eligibility,
-        "incumbent_label": convergence.get("incumbent_label"),
-        "committed_to": convergence.get("committed_to"),
-        "phase2_horizon": config.phase2_horizon if config.program == PROGRAM_CM else None,
-        "config_hash": config.config_hash,
-        "run_status": run_status,
-        "started_at": started_at,
-        "finished_at": finished_at,
-        "n_api_calls": n_api_calls,
-        "n_retries": n_retries,
-        "prompt_template_version": config.prompt_template_version,
-        "code_commit": config.code_commit,
+        "attempt_id": attempt_id,
+        "decision_id": decision_id,
+        "t": t,
+        "agent_id": agent_id,
+        "partner_id": partner_id,
+        "attempt_index": attempt_index,
+        "attempt_seed": attempt_seed(cfg.model_seed, decision_id, attempt_index),
+        "schema_valid": kwargs["schema_valid"],
+        "t_start": kwargs.get("t_start") or now,
+        "t_end": kwargs.get("t_end") or now,
+        "duration_ms": kwargs["duration_ms"],
+        "prompt_tokens": (kwargs.get("usage") or {}).get("prompt_tokens"),
+        "completion_tokens": (kwargs.get("usage") or {}).get("completion_tokens"),
+        "reasoning_tokens": (kwargs.get("usage") or {}).get("reasoning_tokens"),
+        "finish_reason": kwargs.get("finish_reason"),
+        "http_status": kwargs.get("http_status"),
+        "error_class": kwargs.get("error_class"),
+        "enum_label": kwargs.get("enum_label"),
+        "reason": kwargs.get("reason"),
+        "raw_response_text": kwargs.get("raw"),
+        "reasoning": kwargs.get("reasoning"),
+        "option_order": list(option_order),
+        "parse_method": "json_schema" if kwargs["schema_valid"] else "fail",
+        "prompt_sha256": kwargs.get("prompt_sha256"),
+        "queue_wait_ms": None,
+        "inference_ms": None,
+        "in_flight_at_send": None,
     }
 
 
-def execute_emergence_run(
-    config: RunConfig,
-    client: LLMClient,
+async def _one_interaction(
+    cfg: RunConfig,
+    state: RunState,
+    client: AsyncLLMClient,
+    events: EventWriter,
+    run_id: str,
     *,
-    data_dir: Path,
-    logs_dir: Path,
-    retry_policy: RetryPolicy | None = None,
-    now: Callable[[], str] = default_now,
-    console_progress: bool = True,
-) -> RunPaths:
-    """Organic empty-start Phase 1 until gate or cap. No CM."""
-    if config.program != PROGRAM_EMERGENCE:
-        raise ValueError(f"execute_emergence_run requires program={PROGRAM_EMERGENCE!r}")
-
-    run_id = build_run_id(
-        config.model_shorthand, config.topology, config.run_seed, program=PROGRAM_EMERGENCE
+    health: Callable[[], bool],
+    sleep,
+    on_stop: StopHook | None,
+    limiter: asyncio.Semaphore | None,
+) -> None:
+    t = len(state.tracker["outcome"]) + 1
+    p1, p2 = _pair(state.simulation, state.rng_pairing)
+    option_order = list(cfg.options)
+    state.rng_option.shuffle(option_order)
+    answers: list[str] = []
+    used_ids: list[str | None] = []
+    llm_calls: list[bool] = []
+    for agent, partner in ((p1, p2), (p2, p1)):
+        player = state.simulation[agent]
+        if player.get("committed_tag"):
+            answers.append(state.convergence["committed_to"])
+            used_ids.append(None)
+            llm_calls.append(False)
+            state.n_skipped_cm_turns += 1
+            continue
+        prompt = build_user_prompt(player, cfg.memory_size, cfg.rewards, option_order)
+        label, attempt_id = await _decision(
+            cfg=cfg,
+            state=state,
+            client=client,
+            prompt=prompt,
+            options=option_order,
+            run_id=run_id,
+            t=t,
+            agent_id=agent,
+            partner_id=partner,
+            option_order=option_order,
+            events=events,
+            health=health,
+            sleep=sleep,
+            on_stop=on_stop,
+            limiter=limiter,
+        )
+        answers.append(label)
+        used_ids.append(attempt_id)
+        llm_calls.append(True)
+    a1, a2 = answers
+    payoff = get_outcome(a1, a2, cfg.rewards)
+    state.simulation[p1]["interactions"].append(p2)
+    state.simulation[p2]["interactions"].append(p1)
+    update_dict(state.simulation[p1], a1, a2, payoff)
+    update_dict(state.simulation[p2], a2, a1, payoff)
+    update_tracker(state.tracker, p1, p2, a1, a2, payoff)
+    success = 1 if payoff > 5 else 0
+    events.emit(
+        {
+            "schema_version": cfg.schema_version,
+            "record_type": "interaction",
+            "run_id": run_id,
+            "t": t,
+            "p1": p1,
+            "p2": p2,
+            "label_p1": a1,
+            "label_p2": a2,
+            "success": success,
+            "payoff_p1": payoff,
+            "payoff_p2": payoff,
+            "option_order_p1": list(option_order),
+            "option_order_p2": list(option_order),
+            "llm_call_p1": llm_calls[0],
+            "llm_call_p2": llm_calls[1],
+            "used_attempt_id_p1": used_ids[0],
+            "used_attempt_id_p2": used_ids[1],
+        }
     )
-    paths = run_paths(data_dir, logs_dir, config.model_shorthand, config.topology, run_id)
-    ensure_run_dirs(paths)
-    convergence_time = 3 * config.n
+    events.sync()
+    if on_stop:
+        on_stop("after_interaction")
 
-    def on_response(response: LLMResponse) -> None:
-        if response.usage:
-            events.emit({"type": "token_usage", "model_id": response.model_id, **response.usage})
 
-    counting_client = _CountingClient(client, on_response=on_response)
-
-    existing_meta = read_meta(paths.meta_path) if paths.meta_path.exists() else None
-    if existing_meta is not None and existing_meta["run_status"] in ("completed", "censored", "failed"):
-        return paths
-
-    started_at = existing_meta["started_at"] if existing_meta else now()
-    n_retries = existing_meta["n_retries"] if existing_meta else 0
-
-    if existing_meta is not None and existing_meta["run_status"] == "in_progress":
-        payload = load_run_pickle(paths.pickle_path)
-        simulation = payload["simulation"]
-        tracker = payload["tracker"]
-        convergence = payload["convergence"]
-    else:
-        simulation = get_interaction_network(
-            config.topology, n=config.n, degree=config.degree, graph_seed=config.graph_seed
+def _init_state(cfg: RunConfig) -> RunState:
+    rng_pairing = random.Random(substream(cfg.environment_seed, "pairing"))
+    rng_option = random.Random(substream(cfg.environment_seed, "option"))
+    rng_committed = random.Random(substream(cfg.environment_seed, "committed"))
+    if cfg.program == PROGRAM_CM:
+        if cfg.cm_k is None or cfg.cm_k < 1:
+            raise ValueError("cm program requires cm_k")
+        simulation, tracker, convergence, attempts = make_prepared_population(
+            cfg.topology,
+            n=cfg.n,
+            graph_seed=cfg.graph_seed,
+            rewards=cfg.rewards,
+            options=cfg.options,
+            memory_size=cfg.memory_size,
+            incumbent_index=cfg.incumbent_index,
+            degree=cfg.degree,
+            ws_k=cfg.ws_k,
+            ws_p=cfg.ws_p,
+            ba_m=cfg.ba_m,
         )
-        tracker = empty_tracker()
-        convergence = {"converged_index": None, "incumbent_label": None, "committed_to": None}
-
-    rng = random.Random(config.run_seed)
-    events = EventWriter(paths.events_path)
-    retries = {"n": n_retries}
-
-    def on_attempt(attempt: int, exc: Exception | None) -> None:
-        if exc is not None:
-            retries["n"] += 1
-            events.emit({"type": "retry", "attempt": attempt, "error": str(exc)})
-
-    def checkpoint(run_status: str) -> None:
-        if run_status in ("completed", "censored") and convergence.get("converged_index") is not None:
-            if convergence.get("incumbent_label") is None:
-                convergence["incumbent_label"] = modal_label_in_window(tracker, convergence_time)
-        save_run_pickle(paths.pickle_path, simulation, tracker, convergence)
-        write_meta(
-            paths.meta_path,
-            _base_meta(
-                run_id=run_id,
-                config=config,
-                simulation=simulation,
-                convergence=convergence,
-                run_status=run_status,
-                started_at=started_at,
-                finished_at=now() if run_status in ("completed", "censored", "failed") else None,
-                n_api_calls=counting_client.calls,
-                n_retries=retries["n"],
-            ),
-        )
-
-    try:
-        phase1_step = make_interaction_step(
-            simulation,
-            counting_client,
-            config.memory_size,
-            config.rewards,
-            config.options,
-            rng,
-            retry_policy=retry_policy,
-            on_attempt=on_attempt,
-        )
-        interactions_since_checkpoint = 0
-        while True:
-            gate = evaluate_phase1_gate(
-                tracker,
-                convergence_time=convergence_time,
-                threshold=config.convergence_threshold,
-                max_phase1_interactions=config.max_phase1_interactions,
+        committed_ids = swap_committed(simulation, cfg.cm_k, rng_committed)
+        try:
+            assert_prepared(
+                simulation,
+                cfg.options,
+                cfg.memory_size,
+                cfg.incumbent_index,
+                cm_k=cfg.cm_k,
+                committed_ids=committed_ids,
+                rewards_match=cfg.rewards[1],
             )
-            if gate.run_status != "incomplete":
-                break
-            phase1_step(tracker)
-            _emit_progress(
-                events, tracker, "phase1", convergence_time, run_id=run_id, console=console_progress
-            )
-            interactions_since_checkpoint += 1
-            if interactions_since_checkpoint >= config.checkpoint_every:
-                checkpoint("in_progress")
-                interactions_since_checkpoint = 0
+            prepared_ok = True
+        except PreparedInitError:
+            prepared_ok = False
+        return RunState(
+            simulation=simulation,
+            tracker=tracker,
+            convergence=convergence,
+            rng_pairing=rng_pairing,
+            rng_option=rng_option,
+            committed_ids=committed_ids,
+            graph_draw_attempts=attempts,
+            prepared_state_valid=prepared_ok,
+        )
+    simulation, attempts = get_interaction_network(
+        cfg.topology,
+        n=cfg.n,
+        degree=cfg.degree,
+        graph_seed=cfg.graph_seed,
+        ws_k=cfg.ws_k,
+        ws_p=cfg.ws_p,
+        ba_m=cfg.ba_m,
+    )
+    return RunState(
+        simulation=simulation,
+        tracker=empty_tracker(),
+        convergence={"converged_index": None, "incumbent_label": None, "committed_to": None},
+        rng_pairing=rng_pairing,
+        rng_option=rng_option,
+        committed_ids=[],
+        graph_draw_attempts=attempts,
+        prepared_state_valid=None,
+    )
 
-        if gate.run_status == "censored":
-            checkpoint("censored")
-            return paths
 
-        convergence["converged_index"] = gate.t_gate
-        convergence["incumbent_label"] = modal_label_in_window(tracker, convergence_time)
-        convergence["committed_to"] = None
-        events.emit({"type": "gate_passed", "t_gate": gate.t_gate})
-        checkpoint("completed")
-        return paths
+def _replay_interactions(state: RunState, records: list[dict[str, Any]], options: Sequence[str]) -> None:
+    interactions = [row for row in records if row.get("record_type") == "interaction"]
+    expected_t = 1
+    for row in interactions:
+        t = row["t"]
+        if t != expected_t:
+            raise RunFailedError(f"discontinuous interaction t={t}", error_class="config")
+        if t <= len(state.tracker["outcome"]):
+            existing_p = state.tracker["players"][t - 1]
+            if existing_p != [row["p1"], row["p2"]]:
+                raise RunFailedError("pickle ahead of events mismatch", error_class="config")
+            expected_t += 1
+            continue
+        p1, p2 = _pair(state.simulation, state.rng_pairing)
+        if (p1, p2) != (row["p1"], row["p2"]):
+            raise RunFailedError("replay pairing RNG mismatch", error_class="config")
+        option_order = list(options)
+        state.rng_option.shuffle(option_order)
+        recorded_order = row.get("option_order_p1")
+        if recorded_order is not None and list(recorded_order) != option_order:
+            raise RunFailedError("replay option RNG mismatch", error_class="config")
+        a1, a2 = row["label_p1"], row["label_p2"]
+        payoff = row["payoff_p1"]
+        state.simulation[p1]["interactions"].append(p2)
+        state.simulation[p2]["interactions"].append(p1)
+        update_dict(state.simulation[p1], a1, a2, payoff)
+        update_dict(state.simulation[p2], a2, a1, payoff)
+        update_tracker(state.tracker, p1, p2, a1, a2, payoff)
+        expected_t += 1
 
-    except RunFailedError:
-        checkpoint("failed")
-        raise
-    finally:
-        events.close()
 
-
-def execute_cm_run(
-    config: RunConfig,
-    client: LLMClient,
+async def execute_run_async(
+    cfg: RunConfig,
+    client: AsyncLLMClient,
     *,
-    data_dir: Path,
-    logs_dir: Path,
-    retry_policy: RetryPolicy | None = None,
-    now: Callable[[], str] = default_now,
-    console_progress: bool = True,
+    campaign_dir: Path,
+    health: Callable[[], bool] | None = None,
+    sleep=asyncio.sleep,
+    on_stop: StopHook | None = None,
+    limiter: asyncio.Semaphore | None = None,
+    install_sigterm: bool = False,
 ) -> RunPaths:
-    """Prepared population → swap CM → fixed Phase 2 horizon."""
-    if config.program != PROGRAM_CM:
-        raise ValueError(f"execute_cm_run requires program={PROGRAM_CM!r}")
-    if config.cm_k < 1:
-        raise ValueError(f"CM run requires cm_k >= 1; got {config.cm_k}")
-
-    run_id = build_run_id(
-        config.model_shorthand, config.topology, config.run_seed, program=PROGRAM_CM, cm_k=config.cm_k
+    run_key = encode_run_key(
+        campaign=cfg.campaign,
+        program=cfg.program,
+        model_id=cfg.model_id,
+        topology=cfg.topology,
+        cm_k=cfg.cm_k,
+        seed_index=cfg.seed_index,
     )
-    paths = run_paths(data_dir, logs_dir, config.model_shorthand, config.topology, run_id)
+    run_id = build_run_id(run_key)
+    paths = run_paths(campaign_dir, cfg.model_shorthand, cfg.topology, run_id)
     ensure_run_dirs(paths)
-    convergence_time = 3 * config.n
+    lock = FileLock(paths.lock_path)
+    lock.acquire()
+    if install_sigterm:
+        install_process_sigterm()
 
-    def on_response(response: LLMResponse) -> None:
-        if response.usage:
-            events.emit({"type": "token_usage", "model_id": response.model_id, **response.usage})
+    def boundary(kind: str) -> None:
+        reason = process_stop_reason()
+        if reason:
+            raise StopRequested(reason)
+        if on_stop:
+            on_stop(kind)
 
-    counting_client = _CountingClient(client, on_response=on_response)
-
-    existing_meta = read_meta(paths.meta_path) if paths.meta_path.exists() else None
-    if existing_meta is not None and existing_meta["run_status"] in ("completed", "failed"):
-        return paths
-
-    started_at = existing_meta["started_at"] if existing_meta else now()
-    n_retries = existing_meta["n_retries"] if existing_meta else 0
-
-    if existing_meta is not None and existing_meta["run_status"] == "in_progress":
-        payload = load_run_pickle(paths.pickle_path)
-        simulation = payload["simulation"]
-        tracker = payload["tracker"]
-        convergence = payload["convergence"]
-    else:
-        simulation, tracker, convergence = make_prepared_population(
-            config.topology,
-            n=config.n,
-            graph_seed=config.graph_seed,
-            rewards=config.rewards,
-            options=config.options,
-            memory_size=config.memory_size,
-            incumbent_index=config.incumbent_index,
-            degree=config.degree,
-        )
-
-    rng = random.Random(config.run_seed)
+    health_fn = health or (lambda: models_health_ok(cfg.endpoint_base_url) if cfg.provider != "mock" else True)
     events = EventWriter(paths.events_path)
-    retries = {"n": n_retries}
-
-    def on_attempt(attempt: int, exc: Exception | None) -> None:
-        if exc is not None:
-            retries["n"] += 1
-            events.emit({"type": "retry", "attempt": attempt, "error": str(exc)})
-
-    def checkpoint(run_status: str) -> None:
-        save_run_pickle(paths.pickle_path, simulation, tracker, convergence)
-        write_meta(
-            paths.meta_path,
-            _base_meta(
-                run_id=run_id,
-                config=config,
-                simulation=simulation,
-                convergence=convergence,
-                run_status=run_status,
-                started_at=started_at,
-                finished_at=now() if run_status in ("completed", "failed") else None,
-                n_api_calls=counting_client.calls,
-                n_retries=retries["n"],
-            ),
-        )
-
+    segment = {
+        "segment_id": len(read_events(paths.events_path)) + 1,
+        "slurm_job_id": cfg.slurm_job_id,
+        "hostname": cfg.hostname,
+        "started_at": default_now(),
+        "start_t": 0,
+        "slice_id": f"{cfg.seed_index}",
+    }
     try:
-        committed_count = sum(1 for p in simulation.values() if p.get("committed_tag"))
-        if committed_count == 0:
+        if paths.meta_path.exists():
+            meta = read_meta(paths.meta_path)
+            status = meta.get("run_status")
+            if status in {"completed", "censored"}:
+                events.close()
+                lock.release()
+                return paths
+            if status == "failed":
+                events.close()
+                lock.release()
+                return paths
+            pickle_payload = load_run_pickle(paths.pickle_path)
+            state = RunState(
+                simulation=pickle_payload["simulation"],
+                tracker=pickle_payload["tracker"],
+                convergence=pickle_payload["convergence"],
+                rng_pairing=random.Random(substream(cfg.environment_seed, "pairing")),
+                rng_option=random.Random(substream(cfg.environment_seed, "option")),
+                committed_ids=list(meta.get("committed_ids") or []),
+                n_api_calls=int(meta.get("n_api_calls") or 0),
+                n_retries=int(meta.get("n_retries") or 0),
+                n_skipped_cm_turns=int(meta.get("n_skipped_cm_turns") or 0),
+                wait_on_model_ms=int(meta.get("wait_on_model_ms") or 0),
+                graph_draw_attempts=int(meta.get("graph_draw_attempts") or 1),
+                prepared_state_valid=meta.get("prepared_state_valid"),
+                started_at=meta.get("started_at") or default_now(),
+                run_segments=list(meta.get("run_segments") or []),
+                last_checkpoint_t=int(meta.get("last_checkpoint_t") or 0),
+            )
+            rng_states = pickle_payload.get("rng_states") or {}
+            if "pairing" in rng_states:
+                state.rng_pairing.setstate(rng_states["pairing"])
+            if "option" in rng_states:
+                state.rng_option.setstate(rng_states["option"])
+            _resume_gates(cfg, meta, state)
+            records = read_events(paths.events_path)
+            pickle_t = len(state.tracker["outcome"])
+            event_t = len([r for r in records if r.get("record_type") == "interaction"])
+            if pickle_t > event_t:
+                raise RunFailedError("pickle ahead of interaction journal", error_class="config")
+            if pickle_t < event_t:
+                _replay_interactions(state, records, cfg.options)
+                _checkpoint(
+                    paths, cfg, run_id, run_key, state,
+                    status="in_progress", stop_reason=None, error_class=None, extra={"gate_passed": meta.get("gate_passed")},
+                )
+            boundary("after_sidecar")
+        else:
+            state = _init_state(cfg)
+            if cfg.program == PROGRAM_CM and not state.prepared_state_valid:
+                raise RunFailedError("prepared_state_valid is false", error_class="config")
+        segment["start_t"] = len(state.tracker["outcome"])
+        events.emit(
+            {
+                "schema_version": cfg.schema_version,
+                "record_type": "run_segment_start",
+                "run_id": run_id,
+                **segment,
+            }
+        )
+        if cfg.program == PROGRAM_CM and not any(
+            row.get("record_type") == "prepared_state" for row in read_events(paths.events_path)
+        ):
+            memory_vector = [state.simulation[i]["my_history"][-1] if state.simulation[i]["my_history"] else None for i in sorted(state.simulation)]
             events.emit(
                 {
-                    "type": "phase_transition",
-                    "phase": "cm_start",
-                    "committed_to": convergence["committed_to"],
+                    "schema_version": cfg.schema_version,
+                    "record_type": "prepared_state",
+                    "run_id": run_id,
+                    "t": 0,
+                    "memory_labels": memory_vector,
+                    "committed_ids": list(state.committed_ids),
+                    "prepared_score": cfg.memory_size * cfg.rewards[1],
+                    "memory_incumbent_share": 1.0,
+                    "committed_policy_share": (cfg.cm_k or 0) / cfg.n,
+                    "success": None,
+                    "prepared_state_valid": state.prepared_state_valid,
                 }
             )
-            swap_committed(simulation, config.cm_k, rng)
-
-        committed_to = convergence["committed_to"]
-        phase2_step = make_interaction_step(
-            simulation,
-            counting_client,
-            config.memory_size,
-            config.rewards,
-            config.options,
-            rng,
-            committed_to=committed_to,
-            retry_policy=retry_policy,
-            shared_shuffle=True,
-            on_attempt=on_attempt,
+            if on_stop:
+                on_stop("after_prepared")
+        _checkpoint(
+            paths, cfg, run_id, run_key, state,
+            status="in_progress", stop_reason=None, error_class=None,
+            extra={"gate_passed": None if cfg.program == PROGRAM_CM else False},
         )
+        boundary("after_sidecar")
 
-        interactions_since_checkpoint = 0
-
-        def _phase2_step(t: dict) -> None:
-            phase2_step(t)
-            nonlocal interactions_since_checkpoint
-            _emit_progress(
-                events, tracker, "phase2", convergence_time, run_id=run_id, console=console_progress
+        horizon = cfg.max_phase1_interactions if cfg.program == PROGRAM_EMERGENCE else cfg.phase2_horizon
+        while True:
+            if cfg.program == PROGRAM_EMERGENCE and has_tracker_converged(state.tracker, window=cfg.gate_window):
+                break
+            if len(state.tracker["outcome"]) >= horizon:
+                break
+            await _one_interaction(
+                cfg, state, client, events, run_id,
+                health=health_fn, sleep=sleep, on_stop=boundary, limiter=limiter,
             )
-            interactions_since_checkpoint += 1
-            if interactions_since_checkpoint >= config.checkpoint_every:
-                checkpoint("in_progress")
-                interactions_since_checkpoint = 0
+            _checkpoint(
+                paths, cfg, run_id, run_key, state,
+                status="in_progress", stop_reason=None, error_class=None,
+                extra={"gate_passed": False if cfg.program == PROGRAM_EMERGENCE else None},
+            )
+            boundary("after_pickle")
+            boundary("after_sidecar")
 
-        # Resume: only run remaining horizon interactions.
-        already = len(tracker["outcome"])
-        remaining = config.phase2_horizon - already
-        if remaining > 0:
-            run_phase2({"tracker": tracker}, _phase2_step, phase2_horizon=remaining)
-
-        checkpoint("completed")
+        extra: dict[str, Any] = {"finished_at": default_now()}
+        if cfg.program == PROGRAM_EMERGENCE:
+            gate = evaluate_phase1_gate(
+                state.tracker, window=cfg.gate_window, max_phase1_interactions=cfg.max_phase1_interactions
+            )
+            extra.update(
+                gate_passed=gate.gate_passed,
+                t_gate=gate.t_gate,
+                t_phase1_end=len(state.tracker["outcome"]),
+            )
+            status, stop_reason = gate.run_status, gate.stop_reason
+            state.convergence["converged_index"] = gate.t_gate
+        else:
+            extra.update(gate_passed=None, t_gate=None, t_phase1_end=None)
+            status, stop_reason = "completed", "horizon"
+        _checkpoint(paths, cfg, run_id, run_key, state, status=status, stop_reason=stop_reason, error_class=None, extra=extra)
+        events.emit(
+            {
+                "schema_version": cfg.schema_version,
+                "record_type": "run_segment_end",
+                "run_id": run_id,
+                "ended_at": default_now(),
+                "end_t": len(state.tracker["outcome"]),
+                "termination_reason": stop_reason,
+            }
+        )
         return paths
-
-    except RunFailedError:
-        checkpoint("failed")
+    except StopRequested:
+        if "state" not in locals():
+            state = _init_state(cfg)
+        _checkpoint(
+            paths, cfg, run_id, run_key, state,
+            status="interrupted", stop_reason="killed", error_class=None,
+            extra={"finished_at": None, "gate_passed": False if cfg.program == PROGRAM_EMERGENCE else None},
+        )
+        events.emit(
+            {
+                "schema_version": cfg.schema_version,
+                "record_type": "run_segment_end",
+                "run_id": run_id,
+                "ended_at": default_now(),
+                "end_t": len(state.tracker["outcome"]),
+                "termination_reason": "killed",
+            }
+        )
+        return paths
+    except RunFailedError as exc:
+        if "state" not in locals():
+            state = _init_state(cfg)
+        _checkpoint(
+            paths, cfg, run_id, run_key, state,
+            status="failed", stop_reason="failed", error_class=exc.error_class,
+            extra={"finished_at": default_now(), "gate_passed": False if cfg.program == PROGRAM_EMERGENCE else None},
+        )
+        events.emit(
+            {
+                "schema_version": cfg.schema_version,
+                "record_type": "run_segment_end",
+                "run_id": run_id,
+                "ended_at": default_now(),
+                "end_t": len(state.tracker["outcome"]),
+                "termination_reason": "failed",
+                "error_class": exc.error_class,
+            }
+        )
         raise
     finally:
         events.close()
+        lock.release()
 
 
-def execute_run(
-    config: RunConfig,
-    client: LLMClient,
-    *,
-    data_dir: Path,
-    logs_dir: Path,
-    retry_policy: RetryPolicy | None = None,
-    now: Callable[[], str] = default_now,
-    console_progress: bool = True,
-) -> RunPaths:
-    """Dispatch to the program-specific executor."""
-    if config.program == PROGRAM_EMERGENCE:
-        return execute_emergence_run(
-            config,
-            client,
-            data_dir=data_dir,
-            logs_dir=logs_dir,
-            retry_policy=retry_policy,
-            now=now,
-            console_progress=console_progress,
-        )
-    if config.program == PROGRAM_CM:
-        return execute_cm_run(
-            config,
-            client,
-            data_dir=data_dir,
-            logs_dir=logs_dir,
-            retry_policy=retry_policy,
-            now=now,
-            console_progress=console_progress,
-        )
-    raise ValueError(f"Unknown program {config.program!r}; expected {PROGRAM_EMERGENCE!r} or {PROGRAM_CM!r}")
+def execute_run(cfg: RunConfig, client, *, campaign_dir: Path, **kwargs) -> RunPaths:
+    async_client = client if hasattr(client, "complete") and asyncio.iscoroutinefunction(getattr(client, "complete", None)) else AsyncClientAdapter(client)
+    return asyncio.run(execute_run_async(cfg, async_client, campaign_dir=campaign_dir, **kwargs))

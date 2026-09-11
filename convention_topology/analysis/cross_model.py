@@ -19,9 +19,15 @@ def cross_model_summary(per_model_run_tables: dict[str, pd.DataFrame]) -> dict[s
     for model, df in per_model_run_tables.items():
         emergence = df[df["program"] == "emergence"] if "program" in df.columns else df.iloc[0:0]
         cm = df[df["program"] == "cm"] if "program" in df.columns else df.iloc[0:0]
-        eligible_cm = cm[cm["eligibility"] == 1] if not cm.empty else cm
+        eligible_cm = (
+            cm[(cm["prepared_state_valid"] == True) & cm["flip"].notna()]  # noqa: E712
+            if not cm.empty
+            else cm
+        )
         attempted_emergence = (
-            emergence[emergence["dominant_share"].notna()] if not emergence.empty else emergence
+            emergence[emergence["gate_passed"] == True]  # noqa: E712
+            if not emergence.empty and "gate_passed" in emergence.columns
+            else emergence
         )
         summary[model] = {
             "n_eligible": len(eligible_cm),

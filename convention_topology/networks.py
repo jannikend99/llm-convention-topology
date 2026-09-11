@@ -1,3 +1,5 @@
+"""Campaign-fixed undirected graphs. Topology id is mixing."""
+
 from __future__ import annotations
 
 import hashlib
@@ -5,6 +7,8 @@ import random
 from typing import Any
 
 import networkx as nx
+
+from convention_topology.config import TOPOLOGIES
 
 
 def _empty_player() -> dict[str, Any]:
@@ -16,11 +20,11 @@ def _empty_player() -> dict[str, Any]:
         "score_history": [],
         "outcome": [],
         "committed_tag": False,
+        "neighbours": [],
     }
 
 
 def lattice_neighbours(node_id: int, n: int) -> list[int]:
-    """1D ring lattice (Centola 2015): nearest + next-nearest, degree 4."""
     index = node_id - 1
     neighbours: set[int] = set()
     for offset in (1, 2):
@@ -29,66 +33,86 @@ def lattice_neighbours(node_id: int, n: int) -> list[int]:
     return sorted(neighbours)
 
 
-def adjacency_hash(network: dict[int, dict[str, Any]]) -> str:
+def adjacency_pairs(network: dict[int, dict[str, Any]]) -> list[tuple[int, int]]:
     edge_pairs: list[tuple[int, int]] = []
     for node_id, player in sorted(network.items()):
         for neighbour in sorted(player["neighbours"]):
             if node_id < neighbour:
                 edge_pairs.append((node_id, neighbour))
-    digest = hashlib.sha256(repr(edge_pairs).encode("utf-8")).hexdigest()
+    return edge_pairs
+
+
+def adjacency_hash(network: dict[int, dict[str, Any]]) -> str:
+    digest = hashlib.sha256(repr(adjacency_pairs(network)).encode("utf-8")).hexdigest()
     return digest[:16]
 
 
-def get_interaction_network(
-    network_type: str,
-    *,
-    n: int = 24,
-    degree: int = 4,
-    graph_seed: int | None = None,
-    minority_size: int = 0,
-) -> dict[int, dict[str, Any]]:
-    """
-    Build the fixed interaction graph for one population run.
-
-    Supported topologies: complete (mixing), random_regular, lattice.
-    """
-    if minority_size != 0:
-        # N2 (code review, minimal-edit lock -- this module is not rewritten):
-        # committed-minority assignment goes through simulation.py::swap_committed's
-        # injected-rng path; this module-level-random.sample path is dead upstream code.
-        raise NotImplementedError(
-            "minority_size is unused in this codebase; committed-minority assignment "
-            "goes through convention_topology.simulation.swap_committed instead"
-        )
-    network = {
-        node_id + 1: _empty_player()
-        for node_id in range(n + minority_size)
+def graph_stats(network: dict[int, dict[str, Any]]) -> dict[str, float | int | bool]:
+    n = len(network)
+    edges = adjacency_pairs(network)
+    edge_count = len(edges)
+    mean_degree = (2 * edge_count / n) if n else 0.0
+    nx_graph = nx.Graph()
+    nx_graph.add_nodes_from(network)
+    nx_graph.add_edges_from(edges)
+    return {
+        "edge_count": edge_count,
+        "realized_mean_degree": mean_degree,
+        "graph_connected": bool(n == 0 or nx.is_connected(nx_graph)),
     }
 
-    if network_type == "complete":
-        for node_id in network:
-            network[node_id]["neighbours"] = [
-                other for other in network if other != node_id
-            ]
 
-    elif network_type == "random_regular":
-        rng = random.Random(graph_seed)
-        graph = nx.random_regular_graph(d=degree, n=len(network), seed=rng)
-        for node_id in network:
-            network[node_id]["neighbours"] = sorted(
-                neighbour + 1 for neighbour in graph.neighbors(node_id - 1)
-            )
+def _from_nx(graph: nx.Graph, n: int) -> dict[int, dict[str, Any]]:
+    network = {node_id + 1: _empty_player() for node_id in range(n)}
+    for node_id in network:
+        network[node_id]["neighbours"] = sorted(
+            neighbour + 1 for neighbour in graph.neighbors(node_id - 1)
+        )
+    return network
 
-    elif network_type == "lattice":
+
+def _connected_draw(builder, rng: random.Random, n: int, max_draws: int = 10_000) -> tuple[dict[int, dict[str, Any]], int]:
+    attempts = 0
+    while attempts < max_draws:
+        attempts += 1
+        seed = rng.randrange(0, 2**32)
+        graph = builder(seed)
+        if nx.is_connected(graph):
+            return _from_nx(graph, n), attempts
+    raise RuntimeError("failed to draw a connected graph")
+
+
+def get_interaction_network(
+    topology: str,
+    *,
+    n: int,
+    degree: int = 4,
+    graph_seed: int | None = None,
+    ws_k: int = 4,
+    ws_p: float = 0.1,
+    ba_m: int = 2,
+) -> tuple[dict[int, dict[str, Any]], int]:
+    if topology not in TOPOLOGIES:
+        raise ValueError(f"Unsupported topology {topology!r}")
+    rng = random.Random(graph_seed)
+    if topology == "mixing":
+        graph = nx.complete_graph(n)
+        return _from_nx(graph, n), 1
+    if topology == "lattice":
+        network = {node_id + 1: _empty_player() for node_id in range(n)}
         for node_id in network:
             network[node_id]["neighbours"] = lattice_neighbours(node_id, n)
-
-    else:
-        raise ValueError(f"Unsupported network_type: {network_type}")
-
-    if minority_size > 0:  # pragma: no cover -- unreachable; minority_size != 0 raises above
-        committed_ids = random.sample(list(network.keys()), k=minority_size)
-        for node_id in committed_ids:
-            network[node_id]["committed_tag"] = True
-
-    return network
+        return network, 1
+    if topology == "random_regular":
+        return _connected_draw(
+            lambda seed: nx.random_regular_graph(d=degree, n=n, seed=seed),
+            rng,
+            n,
+        )
+    if topology == "watts_strogatz":
+        return _connected_draw(
+            lambda seed: nx.watts_strogatz_graph(n=n, k=ws_k, p=ws_p, seed=seed),
+            rng,
+            n,
+        )
+    return _from_nx(nx.barabasi_albert_graph(n=n, m=ba_m, seed=rng.randrange(0, 2**32)), n), 1

@@ -1,11 +1,4 @@
-"""Analysis dispatch: per-hypothesis runners + output writers (§0 principle 6).
-
-Single home for everything `analyze.py` needs: H1-H4 + eligibility +
-cross-model runners, using `persistence.write_analysis_json`/
-`write_analysis_csv` (N1: analysis-output writes are not exempt from the
-single-writer principle) as the sole writers. `analyze.py` reduces to
-argument parsing + one call into `run_all`.
-"""
+"""Analysis dispatch: per-hypothesis runners. Cell keys are the locked grid."""
 
 from __future__ import annotations
 
@@ -14,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-from convention_topology.analysis.common import eligibility_table, load_run_table
+from convention_topology.analysis.common import gate_table, load_run_table
 from convention_topology.analysis.cross_model import cross_model_summary
 from convention_topology.analysis.h1 import h1_analysis
 from convention_topology.analysis.h2 import h2_analysis
@@ -27,7 +20,7 @@ from convention_topology.persistence import write_analysis_csv, write_analysis_j
 
 def run_h1(runs_df, outputs_dir: Path) -> dict[str, Any]:
     emergence = runs_df[runs_df["program"] == "emergence"]
-    mixing = emergence[(emergence["topology"] == "complete") & emergence["dominant_share"].notna()]
+    mixing = emergence[(emergence["topology"] == "mixing") & emergence["dominant_share"].notna()]
     result = h1_analysis(mixing["dominant_share"].tolist())
     write_analysis_json(outputs_dir / "h1.json", result)
     write_analysis_csv(outputs_dir / "h1.csv", mixing)
@@ -40,19 +33,26 @@ def run_h2(runs_df, outputs_dir: Path) -> dict[str, Any]:
     def _subset(topology: str) -> pd.DataFrame:
         return emergence[(emergence["topology"] == topology) & emergence["dominant_share"].notna()]
 
-    mixing, lattice, random_regular = _subset("complete"), _subset("lattice"), _subset("random_regular")
+    mixing = _subset("mixing")
+    lattice = _subset("lattice")
+    random_regular = _subset("random_regular")
     result = h2_analysis(
-        mixing["dominant_share"].tolist(), lattice["dominant_share"].tolist(), random_regular["dominant_share"].tolist(),
-        mixing["shannon_entropy"].tolist(), lattice["shannon_entropy"].tolist(), random_regular["shannon_entropy"].tolist(),
+        mixing["dominant_share"].tolist(),
+        lattice["dominant_share"].tolist(),
+        random_regular["dominant_share"].tolist(),
+        mixing["shannon_entropy"].tolist(),
+        lattice["shannon_entropy"].tolist(),
+        random_regular["shannon_entropy"].tolist(),
     )
+    frames = [mixing, lattice, random_regular, _subset("watts_strogatz"), _subset("barabasi_albert")]
     write_analysis_json(outputs_dir / "h2.json", result)
-    write_analysis_csv(outputs_dir / "h2.csv", pd.concat([mixing, lattice, random_regular], ignore_index=True))
+    write_analysis_csv(outputs_dir / "h2.csv", pd.concat(frames, ignore_index=True))
     return result
 
 
 def run_h3a(runs_df, outputs_dir: Path, sensitivity_50: bool) -> dict[str, Any]:
     cm = runs_df[runs_df["program"] == "cm"]
-    mixing = cm[(cm["topology"] == "complete") & cm["flip"].notna()]
+    mixing = cm[(cm["topology"] == "mixing") & cm["flip"].notna()]
     result = h3a_analysis(mixing["cm_k"].tolist(), mixing["flip"].tolist())
     write_analysis_json(outputs_dir / "h3a.json", result)
     write_analysis_csv(outputs_dir / "h3a.csv", mixing)
@@ -65,25 +65,24 @@ def run_h3a(runs_df, outputs_dir: Path, sensitivity_50: bool) -> dict[str, Any]:
 
 def run_h3b(runs_df, outputs_dir: Path) -> dict[str, Any]:
     cm = runs_df[runs_df["program"] == "cm"]
-    eligible = cm[cm["flip"].notna()]
-    result = h3b_analysis(eligible)
+    flipped = cm[cm["flip"].notna()]
+    result = h3b_analysis(flipped)
     write_analysis_json(outputs_dir / "h3b.json", result)
-    write_analysis_csv(outputs_dir / "h3b.csv", eligible)
+    write_analysis_csv(outputs_dir / "h3b.csv", flipped)
     return result
 
 
 def run_h4(runs_df, outputs_dir: Path) -> dict[str, Any]:
     emergence = runs_df[runs_df["program"] == "emergence"]
-    mixing = emergence[(emergence["topology"] == "complete") & emergence["incumbent_label"].notna()]
+    mixing = emergence[(emergence["topology"] == "mixing") & emergence["incumbent_label"].notna()]
     result = h4_analysis(mixing["incumbent_label"].tolist())
     write_analysis_json(outputs_dir / "h4.json", result)
     write_analysis_csv(outputs_dir / "h4.csv", mixing)
     return result
 
 
-def run_eligibility(runs_df, outputs_dir: Path) -> None:
-    table = eligibility_table(runs_df)
-    write_analysis_csv(outputs_dir / "eligibility.csv", table)
+def run_gate_table(runs_df, outputs_dir: Path) -> None:
+    write_analysis_csv(outputs_dir / "gate_table.csv", gate_table(runs_df))
 
 
 def run_cross_model(data_dir: Path, outputs_dir: Path) -> dict[str, Any]:
@@ -105,17 +104,16 @@ def run_all(
     h3a: bool,
     h3b: bool,
     h4: bool,
-    eligibility: bool,
+    gate_summary: bool,
     cross_model: bool,
     memory_decision: bool = False,
     memory_decision_compare: bool = False,
     sensitivity_50: bool,
     all_: bool,
 ) -> None:
-    """The one call `analyze.py` makes: dispatch every requested per-model script + cross-model."""
     if memory_decision_compare:
-        compare_memory_decision(data_dir, outputs_dir, models=["mistralnemo", "llama31"])
-        if not (memory_decision or all_ or h1 or h2 or h3a or h3b or h4 or eligibility or cross_model):
+        compare_memory_decision(data_dir, outputs_dir, models=["llama4_scout", "mistral_small4"])
+        if not (memory_decision or all_ or h1 or h2 or h3a or h3b or h4 or gate_summary or cross_model):
             return
 
     if cross_model:
@@ -139,8 +137,7 @@ def run_all(
         run_h3b(runs_df, model_outputs_dir)
     if all_ or h4:
         run_h4(runs_df, model_outputs_dir)
-    if all_ or eligibility:
-        run_eligibility(runs_df, model_outputs_dir)
-    # Exploratory Doug ask — not part of --all confirmatory suite
+    if all_ or gate_summary:
+        run_gate_table(runs_df, model_outputs_dir)
     if memory_decision:
         run_memory_decision(data_dir, outputs_dir, model=model)

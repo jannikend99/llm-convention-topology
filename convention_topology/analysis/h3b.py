@@ -1,8 +1,8 @@
 """H3b: flip ~ cm_k x topology interaction (WORKING.md §8, locked M04).
 
 Logistic regression (statsmodels), LR test vs the main-effects model.
-Auto-labels `confirmatory` when the eligibility floor is met (>=2 topologies
-x >=8 eligible/cell), else `exploratory`/`informative-null`.
+Auto-labels `confirmatory` when the cell-n floor is met (>=2 topologies
+x >=8 prepared-valid rows/cell), else `exploratory`/`informative-null`.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from statsmodels.tools.sm_exceptions import PerfectSeparationError
 
 MIN_CELL_N = 8
 MIN_TOPOLOGIES = 2
-DEFAULT_EXPECTED_CM_KS = tuple(range(1, 7))
+DEFAULT_EXPECTED_CM_KS = (2, 4, 6, 8, 10, 12)
 
 _FIT_EXCEPTIONS = (LinAlgError, PerfectSeparationError, ValueError)
 

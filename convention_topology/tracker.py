@@ -11,7 +11,6 @@ def get_outcome(my_answer: str, partner_answer: str, rewards: Sequence[int]) -> 
 
 
 def coordination_success(outcome: int) -> bool:
-    """Dyadic success when realized payoff exceeds five points (Ashery rule)."""
     return outcome > 5
 
 
@@ -21,7 +20,6 @@ def update_dict(
     partner_answer: str,
     outcome: int,
 ) -> dict[str, Any]:
-    """Verbatim Ashery `update_dict` semantics: score, histories, score_history, outcome."""
     player["score"] += outcome
     player["my_history"].append(my_answer)
     player["partner_history"].append(partner_answer)
@@ -47,20 +45,15 @@ def empty_tracker() -> dict[str, list[Any]]:
     return {"players": [], "answers": [], "outcome": []}
 
 
-def modal_lexicographic(labels: Sequence[str]) -> str | None:
-    """Most frequent label; ties broken by lexicographic order (deterministic, WORKING §7).
-
-    Single source of truth for "modal label with a tie-break" -- both the
-    production incumbent/committed_to path (`modal_label_in_window`, below)
-    and the independent post-hoc DV recomputation (`dvs.incumbent_label`)
-    route through this so an exact tie can never make them disagree (M2).
-    """
+def unique_modal(labels: Sequence[str]) -> str | None:
     if not labels:
         return None
     counts = Counter(labels)
     max_count = max(counts.values())
-    candidates = sorted(label for label, count in counts.items() if count == max_count)
-    return candidates[0]
+    winners = [label for label, count in counts.items() if count == max_count]
+    if len(winners) != 1:
+        return None
+    return winners[0]
 
 
 def modal_label_in_window(
@@ -71,4 +64,4 @@ def modal_label_in_window(
     if len(answers) < window_size:
         return None
     labels = [label for pair in answers[-window_size:] for label in pair]
-    return modal_lexicographic(labels)
+    return unique_modal(labels)

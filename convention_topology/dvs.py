@@ -2,7 +2,7 @@
 
 No I/O, no module-level state (§0 principle 1). `label_shares` is the single
 shared helper every share/entropy DV routes through: windows are counted in
-**label emissions**, so the trailing 3N = 72 interactions contribute 2 labels
+**label emissions**, so the trailing 3N interactions contribute 2 labels
 each, denominator **2 x 3N = 144** (locked). Ties (label frequency ties in a
 window) break **lexicographically** -- deterministic, documented here rather
 than relying on dict/Counter insertion order.
@@ -14,9 +14,9 @@ import math
 from collections import Counter
 from typing import Mapping, Sequence
 
-from convention_topology.tracker import modal_lexicographic as _modal_lexicographic
+from convention_topology.tracker import unique_modal as _unique_modal
 
-DEFAULT_WINDOW = 72  # 3N, N=24 (thesis default population size)
+DEFAULT_WINDOW = 144  # 3N, N=48
 
 
 def label_shares(tracker: Mapping[str, Sequence], window: int = DEFAULT_WINDOW) -> dict[str, float]:
@@ -52,7 +52,7 @@ def incumbent_label(tracker: Mapping[str, Sequence], t_gate: int, window: int = 
     answers = tracker["answers"][:t_gate]
     trailing = answers[-window:] if len(answers) >= window else answers
     labels = [label for pair in trailing for label in pair]
-    return _modal_lexicographic(labels)
+    return _unique_modal(labels)
 
 
 def _flip_windows(
@@ -71,7 +71,7 @@ def _flip_windows(
         if sum(window_outcomes) >= threshold * window:
             window_answers = answers[end - window : end]
             labels = [label for pair in window_answers for label in pair]
-            yield end, _modal_lexicographic(labels)
+            yield end, _unique_modal(labels)
 
 
 def flip(
@@ -123,7 +123,7 @@ def flip_50(
         trailing = my_history[-window:] if len(my_history) >= window else my_history
         if not trailing:
             continue
-        if _modal_lexicographic(trailing) == committed_to:
+        if _unique_modal(trailing) == committed_to:
             matches += 1
     return 1 if (matches / len(noncommitted)) > 0.5 else 0
 
