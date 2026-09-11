@@ -174,6 +174,10 @@ VLLM_EXTRA=()
 if [[ -n "${VLLM_EXTRA_ARGS:-}" ]]; then
   read -r -a VLLM_EXTRA <<< "${VLLM_EXTRA_ARGS}"
 fi
+# INFO: request id + SamplingParams (served temperature). Prompts stay DEBUG.
+if [[ " ${VLLM_EXTRA[*]} " != *" --enable-log-requests "* ]]; then
+  VLLM_EXTRA+=(--enable-log-requests)
+fi
 
 "${VLLM_BIN[@]}" serve "${MODEL_ID}" \
   --host 127.0.0.1 \

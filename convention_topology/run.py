@@ -630,6 +630,8 @@ def _attempt_row(
         "option_order": list(option_order),
         "parse_method": "json_schema" if kwargs["schema_valid"] else "fail",
         "prompt_sha256": kwargs.get("prompt_sha256"),
+        "temperature": cfg.temperature,
+        "max_tokens": cfg.max_tokens,
         "queue_wait_ms": None,
         "inference_ms": None,
         "in_flight_at_send": None,

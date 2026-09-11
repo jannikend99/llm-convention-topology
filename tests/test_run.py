@@ -124,6 +124,8 @@ class RecordingTests(unittest.TestCase):
                 self.assertIsNotNone(row["prompt_sha256"])
                 self.assertTrue(row["t_start"])
                 self.assertTrue(row["t_end"])
+                self.assertEqual(row["temperature"], cfg.temperature)
+                self.assertEqual(row["max_tokens"], cfg.max_tokens)
 
     def test_serve_down_does_not_consume_decision_budget(self):
         with TemporaryDirectory() as tmp:

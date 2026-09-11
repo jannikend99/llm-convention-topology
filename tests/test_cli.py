@@ -84,6 +84,8 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn('TOPOLOGY:?', job)
         self.assertIn("# Wait until /v1/models answers", job)
         self.assertIn("VLLM_EXTRA", job)
+        self.assertIn("--enable-log-requests", job)
+        self.assertIn("thesis_${SLURM_JOB_ID}.log", job)
 
     def test_run_main_cli_base_url_reaches_model_spec(self):
         captured = {}
