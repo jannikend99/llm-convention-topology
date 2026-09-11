@@ -9,8 +9,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH -t 12:00:00
-#SBATCH -o jobs/thesis_vllm_%j.out
-#SBATCH -e jobs/thesis_vllm_%j.err
+#SBATCH -o /scratch/shared/%u/vllm/thesis_vllm_%j.out
+#SBATCH -e /scratch/shared/%u/vllm/thesis_vllm_%j.err
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=jannik.endress@stanford.edu
 #SBATCH --signal=B:USR1@300
@@ -36,12 +36,12 @@ export TRANSFORMERS_CACHE="${HF_HOME}/transformers"
 export HF_HUB_CACHE="${HF_HOME}/hub"
 export XDG_CACHE_HOME="${HF_HOME}/xdg"
 export TMPDIR="${SCRATCH}/tmp"
-export HOME="${SCRATCH}/container-home"
-export FLASHINFER_WORKSPACE_DIR="${SCRATCH}/flashinfer"
-export TRITON_CACHE_DIR="${SCRATCH}/triton"
-export TORCHINDUCTOR_CACHE_DIR="${SCRATCH}/torchinductor"
+WRAP_HOME="${SCRATCH}/container-home"
+WRAP_FLASHINFER="${SCRATCH}/flashinfer"
+WRAP_TRITON="${SCRATCH}/triton"
+WRAP_TORCH="${SCRATCH}/torchinductor"
 mkdir -p "${HF_HOME}" "${HUGGINGFACE_HUB_CACHE}" "${TRANSFORMERS_CACHE}" "${XDG_CACHE_HOME}" "${TMPDIR}" \
-  "${HOME}" "${FLASHINFER_WORKSPACE_DIR}" "${TRITON_CACHE_DIR}" "${TORCHINDUCTOR_CACHE_DIR}"
+  "${WRAP_HOME}" "${WRAP_FLASHINFER}" "${WRAP_TRITON}" "${WRAP_TORCH}" "${SCRATCH}/vllm"
 
 module purge
 
@@ -67,33 +67,41 @@ fi
 if [[ -n "${VLLM_LAUNCH:-}" ]]; then
   read -r -a VLLM_BIN <<< "${VLLM_LAUNCH}"
 elif [[ -n "${VLLM_SIF:-}" ]]; then
-  # GPU nodes: /scratch is read-only; Yen Apptainer sets HOME to its prefix.
-  # --env HOME is ignored; --home plus a bind over the prefix .cache are required.
-  # Re-assert paths after `module load` so the module cannot clobber them.
-  HOME="${SCRATCH}/container-home"
-  FLASHINFER_WORKSPACE_DIR="${SCRATCH}/flashinfer"
-  TRITON_CACHE_DIR="${SCRATCH}/triton"
-  TORCHINDUCTOR_CACHE_DIR="${SCRATCH}/torchinductor"
-  ZFS_APPTAINER_CACHE="${SCRATCH}/zfs-apptainer-cache"
-  export HOME FLASHINFER_WORKSPACE_DIR TRITON_CACHE_DIR TORCHINDUCTOR_CACHE_DIR
-  mkdir -p "${HOME}" "${FLASHINFER_WORKSPACE_DIR}" "${TRITON_CACHE_DIR}" \
-    "${TORCHINDUCTOR_CACHE_DIR}" "${ZFS_APPTAINER_CACHE}"
+  # Yen forbids APPTAINERENV_HOME and cannot mkdir the Apptainer prefix .cache as a bind dest.
+  # Set HOME inside the container via a scratch wrapper (inherited by vLLM inspect subprocesses).
+  WRAP="${SCRATCH}/vllm_wrap.sh"
+  cat > "${WRAP}" <<'WRAP'
+#!/bin/bash
+set -euo pipefail
+export HOME="${WRAP_HOME}"
+export FLASHINFER_WORKSPACE_DIR="${WRAP_FLASHINFER}"
+export XDG_CACHE_HOME="${WRAP_XDG}"
+export TMPDIR="${WRAP_TMPDIR}"
+export TRITON_CACHE_DIR="${WRAP_TRITON}"
+export TORCHINDUCTOR_CACHE_DIR="${WRAP_TORCH}"
+export HF_HOME="${WRAP_HF_HOME}"
+export HUGGINGFACE_HUB_CACHE="${WRAP_HF_HUB}"
+export TRANSFORMERS_CACHE="${WRAP_TF}"
+export HF_HUB_CACHE="${WRAP_HF_HUB}"
+mkdir -p "${HOME}" "${FLASHINFER_WORKSPACE_DIR}" "${XDG_CACHE_HOME}" "${TMPDIR}" \
+  "${TRITON_CACHE_DIR}" "${TORCHINDUCTOR_CACHE_DIR}"
+exec vllm "$@"
+WRAP
+  chmod +x "${WRAP}"
   VLLM_BIN=(
-    apptainer exec --nv --cleanenv
-    --home "${HOME}"
+    apptainer exec --nv
     --bind "${SCRATCH}:${SCRATCH}"
-    --bind "${ZFS_APPTAINER_CACHE}:/zfs/software/old/free/apptainer/x86_64/.cache"
-    --env "HF_HOME=${HF_HOME}"
-    --env "HUGGINGFACE_HUB_CACHE=${HUGGINGFACE_HUB_CACHE}"
-    --env "TRANSFORMERS_CACHE=${TRANSFORMERS_CACHE}"
-    --env "HF_HUB_CACHE=${HF_HUB_CACHE}"
-    --env "XDG_CACHE_HOME=${XDG_CACHE_HOME}"
-    --env "TMPDIR=${TMPDIR}"
-    --env "HOME=${HOME}"
-    --env "FLASHINFER_WORKSPACE_DIR=${FLASHINFER_WORKSPACE_DIR}"
-    --env "TRITON_CACHE_DIR=${TRITON_CACHE_DIR}"
-    --env "TORCHINDUCTOR_CACHE_DIR=${TORCHINDUCTOR_CACHE_DIR}"
-    "${VLLM_SIF}" vllm
+    --env "WRAP_HOME=${WRAP_HOME}"
+    --env "WRAP_FLASHINFER=${WRAP_FLASHINFER}"
+    --env "WRAP_XDG=${XDG_CACHE_HOME}"
+    --env "WRAP_TMPDIR=${TMPDIR}"
+    --env "WRAP_TRITON=${WRAP_TRITON}"
+    --env "WRAP_TORCH=${WRAP_TORCH}"
+    --env "WRAP_HF_HOME=${HF_HOME}"
+    --env "WRAP_HF_HUB=${HUGGINGFACE_HUB_CACHE}"
+    --env "WRAP_TF=${TRANSFORMERS_CACHE}"
+    "${VLLM_SIF}"
+    "${WRAP}"
   )
 else
   VLLM_BIN=(vllm)
@@ -169,7 +177,7 @@ fi
 PORT="$("${PYTHON}" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 export PORT
 export BASE_URL="http://127.0.0.1:${PORT}/v1"
-export SERVE_WAIT_TIMEOUT="${SERVE_WAIT_TIMEOUT:-600}"
+export SERVE_WAIT_TIMEOUT="${SERVE_WAIT_TIMEOUT:-1800}"
 
 VLLM_PID=""
 RUNNER_PID=""
