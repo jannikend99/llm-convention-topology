@@ -62,6 +62,8 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn("--cleanenv", job)
         self.assertIn("HUGGINGFACE_HUB_CACHE", job)
         self.assertIn("FLASHINFER_WORKSPACE_DIR", job)
+        self.assertIn("--home", job)
+        self.assertIn("zfs-apptainer-cache", job)
         self.assertIn("/yen/scratch/shared", job)
         self.assertIn("# #SBATCH -C", job)
         self.assertNotIn("GPU_MODEL:H200", job)

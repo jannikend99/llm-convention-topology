@@ -67,11 +67,22 @@ fi
 if [[ -n "${VLLM_LAUNCH:-}" ]]; then
   read -r -a VLLM_BIN <<< "${VLLM_LAUNCH}"
 elif [[ -n "${VLLM_SIF:-}" ]]; then
-  # GPU nodes expose /scratch as a read-only mount. Bind the real shared tree and
-  # drop host cache env so Hugging Face does not mkdir /scratch.
+  # GPU nodes: /scratch is read-only; Yen Apptainer sets HOME to its prefix.
+  # --env HOME is ignored; --home plus a bind over the prefix .cache are required.
+  # Re-assert paths after `module load` so the module cannot clobber them.
+  HOME="${SCRATCH}/container-home"
+  FLASHINFER_WORKSPACE_DIR="${SCRATCH}/flashinfer"
+  TRITON_CACHE_DIR="${SCRATCH}/triton"
+  TORCHINDUCTOR_CACHE_DIR="${SCRATCH}/torchinductor"
+  ZFS_APPTAINER_CACHE="${SCRATCH}/zfs-apptainer-cache"
+  export HOME FLASHINFER_WORKSPACE_DIR TRITON_CACHE_DIR TORCHINDUCTOR_CACHE_DIR
+  mkdir -p "${HOME}" "${FLASHINFER_WORKSPACE_DIR}" "${TRITON_CACHE_DIR}" \
+    "${TORCHINDUCTOR_CACHE_DIR}" "${ZFS_APPTAINER_CACHE}"
   VLLM_BIN=(
     apptainer exec --nv --cleanenv
+    --home "${HOME}"
     --bind "${SCRATCH}:${SCRATCH}"
+    --bind "${ZFS_APPTAINER_CACHE}:/zfs/software/old/free/apptainer/x86_64/.cache"
     --env "HF_HOME=${HF_HOME}"
     --env "HUGGINGFACE_HUB_CACHE=${HUGGINGFACE_HUB_CACHE}"
     --env "TRANSFORMERS_CACHE=${TRANSFORMERS_CACHE}"
