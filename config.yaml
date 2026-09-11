@@ -98,6 +98,25 @@ models:
     seed_indices_per_slice:
       emergence: 8
       cm: 4
+  gemma4_e2b:
+    model_id: google/gemma-4-E2B-it
+    revision: placeholder-revision
+    shorthand: gemma4_e2b
+    thinking: false
+    thinking_always_on: false
+    reasoning_effort: null
+    max_tokens: 512
+    dtype: bfloat16
+    quantization: null
+    gpus: 1
+    tp: 1
+    max_model_len: 8192
+    max_concurrent_runs: 4
+    in_flight_limit: 8
+    max_num_seqs: 16
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
   qwen38_27b:
     model_id: Qwen/Qwen3.8-27B
     revision: placeholder-revision

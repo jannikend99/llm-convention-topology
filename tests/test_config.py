@@ -85,6 +85,11 @@ class ConfigLockTests(unittest.TestCase):
             ["nemotron35_lightning", "gemma4_31b", "qwen38_27b", "mistral_small4"],
         )
 
+    def test_gemma4_e2b_is_registry_only(self):
+        spec = resolve_model(self.config, "gemma4_e2b")
+        self.assertEqual(spec.model_id, "google/gemma-4-E2B-it")
+        self.assertNotIn("gemma4_e2b", self.config["jobs"]["models"])
+
     def test_thinking_on_and_off_in_jobs_models_loads(self):
         raw = copy.deepcopy(self.config)
         raw["jobs"]["models"] = ["nemotron35_lightning", "gemma4_31b_think"]
