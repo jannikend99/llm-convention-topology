@@ -36,7 +36,12 @@ export TRANSFORMERS_CACHE="${HF_HOME}/transformers"
 export HF_HUB_CACHE="${HF_HOME}/hub"
 export XDG_CACHE_HOME="${HF_HOME}/xdg"
 export TMPDIR="${SCRATCH}/tmp"
-mkdir -p "${HF_HOME}" "${HUGGINGFACE_HUB_CACHE}" "${TRANSFORMERS_CACHE}" "${XDG_CACHE_HOME}" "${TMPDIR}"
+export HOME="${SCRATCH}/container-home"
+export FLASHINFER_WORKSPACE_DIR="${SCRATCH}/flashinfer"
+export TRITON_CACHE_DIR="${SCRATCH}/triton"
+export TORCHINDUCTOR_CACHE_DIR="${SCRATCH}/torchinductor"
+mkdir -p "${HF_HOME}" "${HUGGINGFACE_HUB_CACHE}" "${TRANSFORMERS_CACHE}" "${XDG_CACHE_HOME}" "${TMPDIR}" \
+  "${HOME}" "${FLASHINFER_WORKSPACE_DIR}" "${TRITON_CACHE_DIR}" "${TORCHINDUCTOR_CACHE_DIR}"
 
 module purge
 
@@ -73,6 +78,10 @@ elif [[ -n "${VLLM_SIF:-}" ]]; then
     --env "HF_HUB_CACHE=${HF_HUB_CACHE}"
     --env "XDG_CACHE_HOME=${XDG_CACHE_HOME}"
     --env "TMPDIR=${TMPDIR}"
+    --env "HOME=${HOME}"
+    --env "FLASHINFER_WORKSPACE_DIR=${FLASHINFER_WORKSPACE_DIR}"
+    --env "TRITON_CACHE_DIR=${TRITON_CACHE_DIR}"
+    --env "TORCHINDUCTOR_CACHE_DIR=${TORCHINDUCTOR_CACHE_DIR}"
     "${VLLM_SIF}" vllm
   )
 else
