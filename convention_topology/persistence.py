@@ -28,7 +28,6 @@ SIDECAR_FIELDS = (
     "topology",
     "cell_key",
     "seed_index",
-    "slate",
     "sampling_plan",
     "attempted_per_cell",
     "replaced",

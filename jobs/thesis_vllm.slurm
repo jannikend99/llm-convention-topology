@@ -41,7 +41,7 @@ else
 fi
 
 SCRATCH="/scratch/shared/${USER}"
-CAMPAIGN="${CAMPAIGN:-fit-slate-a}"
+CAMPAIGN="${CAMPAIGN:-technical-smoke}"
 ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"
 VENV="${SCRATCH}/venvs/thesis"
 VLLM_LOG="${SCRATCH}/vllm/thesis_${SLURM_JOB_ID}.log"
@@ -49,8 +49,8 @@ HF_HOME="${SCRATCH}/models"
 export HF_HOME
 
 : "${MODEL:?set MODEL to a config.yaml shorthand (from --print-jobs or a fit hand flag)}"
-: "${SEED_TO:?set SEED_TO so a missing flag cannot run the full seed grid as fit-slate-a}"
-: "${TOPOLOGY:?set TOPOLOGY so a missing flag cannot run every topology as fit-slate-a}"
+: "${SEED_TO:?set SEED_TO so a missing flag cannot run the full seed grid as technical-smoke}"
+: "${TOPOLOGY:?set TOPOLOGY so a missing flag cannot run every topology as technical-smoke}"
 export MODEL
 
 mkdir -p "${ARTIFACT_ROOT}" "$(dirname "${VLLM_LOG}")" "$(dirname "${VENV}")"

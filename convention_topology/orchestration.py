@@ -13,7 +13,6 @@ from convention_topology.config import (
     TOPOLOGIES,
     ModelSpec,
     resolve_model,
-    slate_a_shorthands,
 )
 from convention_topology.git_guard import current_commit, require_clean_worktree
 from convention_topology.llm import AsyncClientAdapter, AsyncOpenAICompatClient, MockLLMClient
@@ -41,10 +40,7 @@ class JobSlice:
 
 
 def planned_models(config: Mapping[str, Any]) -> list[str]:
-    listed = list(config["jobs"].get("models") or [])
-    if listed:
-        return listed
-    return slate_a_shorthands(config)
+    return list(config["jobs"]["models"])
 
 
 def planned_programs(config: Mapping[str, Any], program: str | None = None) -> list[str]:

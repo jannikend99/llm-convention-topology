@@ -50,7 +50,7 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn("--max-model-len", job)
         self.assertIn("--max-num-seqs", job)
         self.assertIn("--tensor-parallel-size", job)
-        self.assertIn('CAMPAIGN="${CAMPAIGN:-fit-slate-a}"', job)
+        self.assertIn('CAMPAIGN="${CAMPAIGN:-technical-smoke}"', job)
         self.assertIn('ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"', job)
         self.assertIn('--campaign "${CAMPAIGN}"', job)
         self.assertIn("vLLM launch unset", job)
@@ -126,13 +126,13 @@ class DirtyGitCliTests(unittest.TestCase):
                         "--seed-to",
                         "0",
                         "--campaign",
-                        "fit-slate-a",
+                        "pilot-run",
                         "--artifact-root",
                         str(root),
                     ]
                 )
         self.assertEqual(code, 0)
-        self.assertEqual(captured["campaign"], "fit-slate-a")
+        self.assertEqual(captured["campaign"], "pilot-run")
         self.assertEqual(Path(captured["campaign_dir"]), root)
 
     def test_run_main_print_jobs_emits_hf_id_and_shorthand(self):

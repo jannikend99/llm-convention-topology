@@ -632,7 +632,7 @@ class FunnelAndSmokeTests(unittest.TestCase):
             d5 = pd.read_csv(model_out / "D5.csv")
             self.assertAlmostEqual(float(d5.iloc[0]["memory_incumbent_share"]), 1.0)
             self.assertAlmostEqual(float(d5.iloc[0]["committed_policy_share"]), 2 / 48)
-            self.assertNotEqual(json.loads((root / "runs" / "mock" / "mixing" / f"{e_id}.meta.json").read_text())["campaign"], "slate-a")
+            self.assertNotEqual(json.loads((root / "runs" / "mock" / "mixing" / f"{e_id}.meta.json").read_text())["campaign"], "experiment")
 
 
 class ScopedAbsenceTests(unittest.TestCase):

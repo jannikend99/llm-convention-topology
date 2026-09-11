@@ -37,11 +37,11 @@ run:
   attempted_per_cell: 32
   sampling_plan: fixed_attempted
   checkpoint_every: 1
-  campaign: slate-a
+  campaign: experiment
   artifact_root: ""
 
 jobs:
-  models: []
+  models: [llama4_scout, gemma4_31b, qwen38_27b, mistral_small4]
   programs: [emergence, cm]
 
 serve:
@@ -55,7 +55,6 @@ models:
     model_id: meta-llama/Llama-4-Scout-17B-16E-Instruct
     revision: placeholder-revision
     shorthand: llama4_scout
-    slate: A
     thinking: false
     thinking_always_on: false
     reasoning_effort: null
@@ -75,7 +74,6 @@ models:
     model_id: google/gemma-4-31B-it
     revision: placeholder-revision
     shorthand: gemma4_31b
-    slate: A
     thinking: false
     thinking_always_on: false
     reasoning_effort: null
@@ -95,7 +93,6 @@ models:
     model_id: Qwen/Qwen3.8-27B
     revision: placeholder-revision
     shorthand: qwen38_27b
-    slate: A
     thinking: false
     thinking_always_on: false
     reasoning_effort: null
@@ -115,7 +112,6 @@ models:
     model_id: mistralai/Mistral-Small-4-119B-2603
     revision: placeholder-revision
     shorthand: mistral_small4
-    slate: A
     thinking: false
     thinking_always_on: false
     reasoning_effort: null
@@ -135,7 +131,6 @@ models:
     model_id: meta-llama/Llama-3.3-70B-Instruct
     revision: placeholder-revision
     shorthand: llama33_70b
-    slate: A
     thinking: false
     thinking_always_on: false
     reasoning_effort: null
@@ -155,7 +150,6 @@ models:
     model_id: mock
     revision: mock
     shorthand: mock
-    slate: A
     thinking: false
     thinking_always_on: false
     reasoning_effort: null
@@ -175,7 +169,6 @@ models:
     model_id: google/gemma-4-31B-it
     revision: placeholder-revision
     shorthand: gemma4_31b_think
-    slate: B
     thinking: true
     thinking_always_on: false
     reasoning_effort: medium
@@ -195,7 +188,6 @@ models:
     model_id: Qwen/Qwen3.8-27B
     revision: placeholder-revision
     shorthand: qwen38_27b_think
-    slate: B
     thinking: true
     thinking_always_on: false
     reasoning_effort: medium
@@ -215,7 +207,6 @@ models:
     model_id: mistralai/Ministral-3-14B-Reasoning-2512
     revision: placeholder-revision
     shorthand: ministral3_14b
-    slate: B
     thinking: true
     thinking_always_on: true
     reasoning_effort: medium
@@ -235,7 +226,6 @@ models:
     model_id: Qwen/Qwen3-30B-A3B-Thinking-2507
     revision: placeholder-revision
     shorthand: qwen3_30b_a3b_think
-    slate: B
     thinking: true
     thinking_always_on: true
     reasoning_effort: medium

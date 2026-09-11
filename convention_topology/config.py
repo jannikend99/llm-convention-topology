@@ -15,7 +15,6 @@ DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
 
 TOPOLOGIES = ("mixing", "random_regular", "lattice", "watts_strogatz", "barabasi_albert")
 K_SET = (2, 4, 6, 8, 10, 12)
-SLATE_A_COUNTED = ("llama4_scout", "gemma4_31b", "qwen38_27b", "mistral_small4")
 SERVE_PROFILE_KEYS = (
     "dtype",
     "quantization",
@@ -43,8 +42,10 @@ BANNED_CONFIG_KEYS = frozenset(
         "pilot_attempted_per_topology",
         "workers",
         "TBD-doug",
+        "slate",
     }
 )
+BANNED_CAMPAIGN_NAMES = frozenset({"slate-a", "fit-slate-a"})
 
 LOCK_PROTOCOL = {
     "N": 48,
@@ -78,7 +79,6 @@ class ModelSpec:
     api_key: str
     temperature: float
     max_tokens: int
-    slate: str
     thinking: bool
     thinking_always_on: bool
     reasoning_effort: str | None
@@ -217,6 +217,7 @@ def _validate_protocol(raw: Mapping[str, Any]) -> None:
         raise ConfigError("run.checkpoint_every must be 1")
     if int(run.get("seed_scheme_version")) != 1:
         raise ConfigError("run.seed_scheme_version must be 1")
+    check_campaign_name(str(run.get("campaign") or ""))
     serve = raw.get("serve")
     if not isinstance(serve, dict):
         raise ConfigError("config must contain a serve section")
@@ -237,7 +238,9 @@ def _validate_models(raw: Mapping[str, Any]) -> None:
     if not isinstance(models, dict) or "mock" not in models:
         raise ConfigError("models.mock is required")
     jobs = raw.get("jobs") or {}
-    job_models = list(jobs.get("models") or [])
+    job_models = jobs.get("models")
+    if not isinstance(job_models, list) or not job_models:
+        raise ConfigError("jobs.models must be a non-empty list")
     programs = list(jobs.get("programs") or [])
     if programs and set(programs) - {"emergence", "cm"}:
         raise ConfigError("jobs.programs must be emergence and/or cm")
@@ -252,22 +255,16 @@ def _validate_models(raw: Mapping[str, Any]) -> None:
         slices = entry.get("seed_indices_per_slice")
         if not isinstance(slices, dict) or "emergence" not in slices or "cm" not in slices:
             raise ConfigError(f"model {shorthand!r} needs seed_indices_per_slice for both programs")
-        slate = entry.get("slate")
-        if slate not in {"A", "B"}:
-            raise ConfigError(f"model {shorthand!r} slate must be A or B")
+        if not isinstance(entry.get("thinking"), bool):
+            raise ConfigError(f"model {shorthand!r} thinking must be a boolean")
         effort = entry.get("reasoning_effort")
         if effort not in (None, "low", "medium", "high"):
             raise ConfigError(f"model {shorthand!r} has invalid reasoning_effort")
         if effort == "high" and not entry.get("thinking_always_on"):
             raise ConfigError("reasoning_effort high is not allowed when none vs high is the only control")
-    if job_models:
-        slates_in_jobs: set[str] = set()
-        for name in job_models:
-            if name not in models:
-                raise ConfigError(f"jobs.models lists unknown shorthand {name!r}")
-            slates_in_jobs.add(str(models[name].get("slate")))
-        if "A" in slates_in_jobs and "B" in slates_in_jobs:
-            raise ConfigError("mixing Slate A and Slate B in jobs.models is rejected")
+    for name in job_models:
+        if name not in models:
+            raise ConfigError(f"jobs.models lists unknown shorthand {name!r}")
 
 
 def validate_config(raw: Mapping[str, Any]) -> dict[str, Any]:
@@ -284,19 +281,22 @@ def validate_config(raw: Mapping[str, Any]) -> dict[str, Any]:
     return data
 
 
+def check_campaign_name(name: str) -> str:
+    campaign = str(name or "").strip()
+    if not campaign:
+        raise ConfigError("run.campaign is required")
+    if campaign in BANNED_CAMPAIGN_NAMES:
+        raise ConfigError(
+            f"campaign {campaign!r} is banned; use technical-smoke, pilot-run, or experiment"
+        )
+    return campaign
+
+
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
     config_path = Path(path) if path is not None else DEFAULT_CONFIG_PATH
     with config_path.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle)
     return validate_config(raw)
-
-
-def slate_a_shorthands(config: Mapping[str, Any]) -> list[str]:
-    return [
-        name
-        for name, entry in config["models"].items()
-        if entry.get("slate") == "A" and name != "mock" and name in SLATE_A_COUNTED
-    ]
 
 
 def resolve_model(config: Mapping[str, Any], shorthand: str) -> ModelSpec:
@@ -318,7 +318,6 @@ def resolve_model(config: Mapping[str, Any], shorthand: str) -> ModelSpec:
         api_key=str(serve.get("api_key") or "EMPTY"),
         temperature=float(config["protocol"]["temperature"]),
         max_tokens=int(entry["max_tokens"]),
-        slate=str(entry["slate"]),
         thinking=bool(entry["thinking"]),
         thinking_always_on=bool(entry["thinking_always_on"]),
         reasoning_effort=entry.get("reasoning_effort"),

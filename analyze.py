@@ -12,7 +12,7 @@ from convention_topology.analysis.dispatch import STUBBED_MEMORY, run_all
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Per-model H1-H4 + cross-model analysis dispatch.")
     parser.add_argument("--model", default=None, help="Required unless --cross-model.")
-    parser.add_argument("--data", default="data/runs/slate-a")
+    parser.add_argument("--data", default="data/runs/experiment")
     parser.add_argument("--outputs", default="outputs")
     parser.add_argument("--h1", action="store_true")
     parser.add_argument("--h2", action="store_true")

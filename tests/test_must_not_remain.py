@@ -20,6 +20,11 @@ BANNED_SUBSTRINGS = (
     "run_cell_targeted",
     "ThreadPoolExecutor",
     "TBD-doug",
+    "fit-slate-a",
+    "slate-a",
+    "slate_a_shorthands",
+    "Slate A",
+    "Slate B",
     "delete_run_artifacts",
     "load_dotenv",
     "run_pilot",
@@ -58,6 +63,7 @@ class MustNotRemainTests(unittest.TestCase):
         self.assertNotIn("complete", TOPOLOGIES)
         self.assertEqual(TOPOLOGIES[0], "mixing")
         self.assertNotIn("eligibility", SIDECAR_FIELDS)
+        self.assertNotIn("slate", SIDECAR_FIELDS)
         self.assertNotIn("main_eligible_targets", SIDECAR_FIELDS)
         self.assertIn("gate_passed", SIDECAR_FIELDS)
         self.assertIn("prepared_state_valid", SIDECAR_FIELDS)

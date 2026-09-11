@@ -21,12 +21,12 @@ Counted path: local OpenAI-compatible vLLM (`provider: openai_compat`) or `mock`
 ```bash
 python -m pytest tests -q
 python run_main.py --print-jobs
-python run_main.py --model mock --program emergence --campaign fit-slate-a --artifact-root /tmp/campaign --seed-from 0 --seed-to 1
+python run_main.py --model mock --program emergence --campaign technical-smoke --artifact-root /tmp/campaign --seed-from 0 --seed-to 1
 python run_one.py --program emergence --model mock --topology mixing --seed-index 0 --artifact-root /tmp/campaign
 ```
 
-`--print-jobs` prints the confirmatory grid (shorthand + HF `model_id`). Fit jobs use `--campaign` so artifacts are not `slate-a`. `config.yaml` `run.campaign: slate-a` stays the confirmatory default.
+`--print-jobs` prints the confirmatory grid (shorthand + HF `model_id`). Fit/timing jobs use `--campaign pilot-run` so artifacts are not `experiment`. `config.yaml` `run.campaign: experiment` stays the confirmatory default.
 
-Yen: clone/pull `/scratch/shared/jendress/exp/llm-convention-topology`, then `sbatch jobs/thesis_vllm.slurm` from the repo root in the Jupyter Terminal. First live campaign is `fit-slate-a`. Operator packet: thesis `specs/yen-configuration.md`. This package does not submit jobs. `notebooks/yen_jobs.ipynb` is archived.
+Yen: clone/pull `/scratch/shared/jendress/exp/llm-convention-topology`, then `sbatch jobs/thesis_vllm.slurm` from the repo root in the Jupyter Terminal. First live campaign is `technical-smoke`. Operator packet: thesis `specs/yen-configuration.md`. This package does not submit jobs. `notebooks/yen_jobs.ipynb` is archived.
 
 Campaign artifacts: `data/runs/<campaign>/` on a laptop (gitignored), or `--artifact-root` on scratch (`/scratch/shared/jendress/runs/<campaign>/`; do not append the campaign name twice).

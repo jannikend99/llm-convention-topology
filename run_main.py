@@ -8,7 +8,7 @@ import asyncio
 import os
 from pathlib import Path
 
-from convention_topology.config import apply_serve_base_url, load_config, resolve_model
+from convention_topology.config import apply_serve_base_url, check_campaign_name, load_config, resolve_model
 from convention_topology.git_guard import DirtyWorktreeError, require_clean_worktree
 from convention_topology.orchestration import format_job_line, print_jobs, run_slice_async
 from convention_topology.persistence import campaign_root
@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
 
     config = load_config(args.config)
     if args.campaign:
-        config["run"]["campaign"] = args.campaign
+        config["run"]["campaign"] = check_campaign_name(args.campaign)
     if args.print_jobs:
         for job in print_jobs(config, program=args.program):
             print(format_job_line(job))

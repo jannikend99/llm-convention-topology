@@ -139,7 +139,6 @@ class RunConfig:
     temperature: float = 0.5
     max_tokens: int = 512
     serve_wait_timeout: float = 600.0
-    slate: str = "A"
     thinking: bool = False
     thinking_always_on: bool = False
     reasoning_effort: str | None = None
@@ -262,7 +261,6 @@ def build_run_config(
         temperature=float(protocol["temperature"]),
         max_tokens=int(model_spec.max_tokens),
         serve_wait_timeout=float(config["serve"]["serve_wait_timeout"]),
-        slate=model_spec.slate,
         thinking=model_spec.thinking,
         thinking_always_on=model_spec.thinking_always_on,
         reasoning_effort=model_spec.reasoning_effort,
@@ -357,7 +355,6 @@ def _sidecar(cfg: RunConfig, run_id: str, run_key: dict, state: RunState, *, sta
             "topology": cfg.topology,
             "cell_key": run_key["cell_key"],
             "seed_index": cfg.seed_index,
-            "slate": cfg.slate,
             "sampling_plan": cfg.sampling_plan,
             "attempted_per_cell": cfg.attempted_per_cell,
             "replaced": False,

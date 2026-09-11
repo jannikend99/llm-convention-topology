@@ -1,4 +1,4 @@
-"""Cross-model robustness comparison — Slate A models are confirmatory, not ranked."""
+"""Cross-model robustness comparison — confirmatory models are compared, not ranked."""
 
 from __future__ import annotations
 

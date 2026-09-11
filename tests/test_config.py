@@ -16,7 +16,6 @@ from convention_topology.config import (
     load_config,
     protocol_fingerprint,
     resolve_model,
-    slate_a_shorthands,
     trajectory_module_hashes,
     validate_config,
 )
@@ -74,9 +73,37 @@ class ConfigLockTests(unittest.TestCase):
         with patch("convention_topology.config.trajectory_module_hashes", return_value=patched):
             self.assertNotEqual(protocol_fingerprint(self.config), fp)
 
-    def test_empty_jobs_models_are_slate_a(self):
-        names = slate_a_shorthands(self.config)
-        self.assertEqual(names, ["llama4_scout", "gemma4_31b", "qwen38_27b", "mistral_small4"])
+    def test_empty_jobs_models_rejected(self):
+        raw = copy.deepcopy(self.config)
+        raw["jobs"]["models"] = []
+        with self.assertRaises(ConfigError):
+            validate_config(raw)
+
+    def test_default_jobs_models_are_the_four_shorthands(self):
+        self.assertEqual(
+            self.config["jobs"]["models"],
+            ["llama4_scout", "gemma4_31b", "qwen38_27b", "mistral_small4"],
+        )
+
+    def test_thinking_on_and_off_in_jobs_models_loads(self):
+        raw = copy.deepcopy(self.config)
+        raw["jobs"]["models"] = ["llama4_scout", "gemma4_31b_think"]
+        validated = validate_config(raw)
+        self.assertFalse(validated["models"]["llama4_scout"]["thinking"])
+        self.assertTrue(validated["models"]["gemma4_31b_think"]["thinking"])
+
+    def test_rejects_slate_model_key(self):
+        raw = copy.deepcopy(self.config)
+        raw["models"]["llama4_scout"]["slate"] = "A"
+        with self.assertRaises(ConfigError):
+            validate_config(raw)
+
+    def test_rejects_banned_campaign_names(self):
+        raw = copy.deepcopy(self.config)
+        for name in ("slate-a", "fit-slate-a"):
+            raw["run"]["campaign"] = name
+            with self.assertRaises(ConfigError):
+                validate_config(raw)
 
 
 class BannedConfigTests(unittest.TestCase):
@@ -130,12 +157,6 @@ class BannedConfigTests(unittest.TestCase):
         raw = self._raw()
         raw["models"]["gpt"] = copy.deepcopy(raw["models"]["mock"])
         raw["models"]["gpt"]["model_id"] = "TBD-doug"
-        with self.assertRaises(ConfigError):
-            validate_config(raw)
-
-    def test_rejects_mixed_slates(self):
-        raw = self._raw()
-        raw["jobs"]["models"] = ["llama4_scout", "gemma4_31b_think"]
         with self.assertRaises(ConfigError):
             validate_config(raw)
 
