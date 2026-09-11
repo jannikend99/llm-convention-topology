@@ -1,5 +1,6 @@
 #!/bin/bash
-# Thesis counted-path job. Account paths and GPU feature are submit-time fills.
+# Thesis counted-path job. vLLM stack identity is an operator fill (fail-closed).
+# #SBATCH -C is an operator fill after a fit. Do not invent a GPU color here.
 # Not the repo-root Ollama smoke.
 #SBATCH --job-name=thesis-vllm
 #SBATCH -p gpu
@@ -12,24 +13,98 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=jannik.endress@stanford.edu
 #SBATCH --signal=B:USR1@300
-# Submit-time GPU feature example: #SBATCH -C "GPU_MODEL:H200"
+# Operator GPU feature after fit (leave commented until then):
+# #SBATCH -C "GPU_MODEL:...."
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
 
 module purge
-# Load the vLLM stack after purge (module or container; submit-time fill).
-# module load apptainer
+
+if [[ -n "${VLLM_MODULE:-}" ]]; then
+  module load "${VLLM_MODULE}"
+elif [[ -n "${VLLM_SIF:-}" ]]; then
+  module load apptainer
+elif [[ -n "${VLLM_LAUNCH:-}" ]]; then
+  :
+else
+  echo "vLLM launch unset: export VLLM_MODULE, VLLM_SIF, or VLLM_LAUNCH from cluster evidence, then resubmit." >&2
+  exit 1
+fi
+
+if [[ -n "${VLLM_LAUNCH:-}" ]]; then
+  read -r -a VLLM_BIN <<< "${VLLM_LAUNCH}"
+elif [[ -n "${VLLM_SIF:-}" ]]; then
+  VLLM_BIN=(apptainer exec --nv "${VLLM_SIF}" vllm)
+else
+  VLLM_BIN=(vllm)
+fi
 
 SCRATCH="/scratch/shared/${USER}"
-CAMPAIGN="${CAMPAIGN:-slate-a}"
+CAMPAIGN="${CAMPAIGN:-fit-slate-a}"
 ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"
+VENV="${SCRATCH}/venvs/thesis"
 VLLM_LOG="${SCRATCH}/vllm/thesis_${SLURM_JOB_ID}.log"
 HF_HOME="${SCRATCH}/models"
 export HF_HOME
-mkdir -p "${ARTIFACT_ROOT}" "$(dirname "${VLLM_LOG}")"
 
-PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+: "${MODEL:?set MODEL to a config.yaml shorthand (from --print-jobs or a fit hand flag)}"
+: "${SEED_TO:?set SEED_TO so a missing flag cannot run the full seed grid as fit-slate-a}"
+: "${TOPOLOGY:?set TOPOLOGY so a missing flag cannot run every topology as fit-slate-a}"
+export MODEL
+
+mkdir -p "${ARTIFACT_ROOT}" "$(dirname "${VLLM_LOG}")" "$(dirname "${VENV}")"
+
+if [[ ! -x "${VENV}/bin/python" ]]; then
+  echo "Creating thesis venv at ${VENV}"
+  /usr/bin/python3 -m venv "${VENV}"
+  "${VENV}/bin/python" -m pip install -r requirements.txt
+fi
+# shellcheck disable=SC1091
+source "${VENV}/bin/activate"
+PYTHON="${VENV}/bin/python"
+
+eval "$(
+  MODEL="${MODEL}" "${PYTHON}" - <<'PY'
+import os
+import shlex
+
+from convention_topology.config import load_config, resolve_model
+
+spec = resolve_model(load_config(), os.environ["MODEL"])
+defaults = {
+    "MODEL_ID": spec.model_id,
+    "DTYPE": spec.dtype or "",
+    "MAX_MODEL_LEN": str(spec.max_model_len),
+    "MAX_NUM_SEQS": str(spec.max_num_seqs),
+    "TP": str(spec.tp),
+}
+for key, value in defaults.items():
+    if not os.environ.get(key):
+        print(f"export {key}={shlex.quote(str(value))}")
+PY
+)"
+
+if [[ -z "${MODEL_ID:-}" ]]; then
+  echo "MODEL_ID is empty after profile lookup" >&2
+  exit 1
+fi
+
+# Sidecar forensics (job_forensics): export versions from the known vLLM binary
+# and a scheduler GPU-type env if present. Do not write device queries into config.yaml.
+export GPU_TYPE="${GPU_TYPE:-${SLURM_GPU_TYPE:-}}"
+if [[ -z "${VLLM_VERSION:-}" ]]; then
+  set +e
+  VLLM_VERSION="$("${VLLM_BIN[@]}" --version 2>/dev/null)"
+  _vllm_ver_rc=$?
+  set -e
+  if [[ ${_vllm_ver_rc} -ne 0 ]]; then
+    VLLM_VERSION=""
+  fi
+  export VLLM_VERSION
+fi
+
+PORT="$("${PYTHON}" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 export PORT
 export BASE_URL="http://127.0.0.1:${PORT}/v1"
 export SERVE_WAIT_TIMEOUT="${SERVE_WAIT_TIMEOUT:-600}"
@@ -53,17 +128,21 @@ on_pretimeout() {
   exit 0
 }
 
+trap stop_vllm EXIT
 trap on_pretimeout USR1 TERM INT
 
-vllm serve "${HF_MODEL:?set HF_MODEL}" \
+"${VLLM_BIN[@]}" serve "${MODEL_ID}" \
   --host 127.0.0.1 \
   --port "${PORT}" \
-  --tensor-parallel-size "${TP:-1}" \
+  --dtype "${DTYPE}" \
+  --max-model-len "${MAX_MODEL_LEN}" \
+  --max-num-seqs "${MAX_NUM_SEQS}" \
+  --tensor-parallel-size "${TP}" \
   >"${VLLM_LOG}" 2>&1 &
 VLLM_PID=$!
 
 # Wait until /v1/models answers within SERVE_WAIT_TIMEOUT.
-python3 - <<'PY'
+"${PYTHON}" - <<'PY'
 import os, sys, time, urllib.request
 url = os.environ["BASE_URL"] + "/models"
 timeout = float(os.environ["SERVE_WAIT_TIMEOUT"])
@@ -82,13 +161,24 @@ print(f"timed out waiting for {url}: {last}", file=sys.stderr)
 sys.exit(1)
 PY
 
-python3 run_main.py \
-  --model "${MODEL:?set MODEL}" \
-  --program "${PROGRAM:-emergence}" \
-  --artifact-root "${ARTIFACT_ROOT}" \
-  --base-url "${BASE_URL}" \
-  ${SEED_FROM:+--seed-from "${SEED_FROM}"} \
-  ${SEED_TO:+--seed-to "${SEED_TO}"} &
+RUNNER_ARGS=(
+  "${PYTHON}" run_main.py
+  --model "${MODEL}"
+  --program "${PROGRAM:-emergence}"
+  --artifact-root "${ARTIFACT_ROOT}"
+  --base-url "${BASE_URL}"
+  --campaign "${CAMPAIGN}"
+)
+if [[ -n "${SEED_FROM:-}" ]]; then
+  RUNNER_ARGS+=(--seed-from "${SEED_FROM}")
+fi
+RUNNER_ARGS+=(--seed-to "${SEED_TO}")
+RUNNER_ARGS+=(--topology "${TOPOLOGY}")
+if [[ -n "${K:-}" ]]; then
+  RUNNER_ARGS+=(--k "${K}")
+fi
+
+"${RUNNER_ARGS[@]}" &
 RUNNER_PID=$!
 wait "${RUNNER_PID}"
 stop_vllm

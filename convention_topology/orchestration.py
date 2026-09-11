@@ -33,6 +33,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 @dataclass(frozen=True)
 class JobSlice:
     model: str
+    model_id: str
     program: str
     seed_from: int
     seed_to: int
@@ -80,14 +81,24 @@ def print_jobs(config: Mapping[str, Any], *, program: str | None = None) -> list
         for prog in planned_programs(config, program):
             size = spec.seed_indices_per_slice[prog]
             for seed_from, seed_to in seed_slices(attempted, size):
-                jobs.append(JobSlice(model=model, program=prog, seed_from=seed_from, seed_to=seed_to, gpus=spec.gpus))
+                jobs.append(
+                    JobSlice(
+                        model=model,
+                        model_id=spec.model_id,
+                        program=prog,
+                        seed_from=seed_from,
+                        seed_to=seed_to,
+                        gpus=spec.gpus,
+                    )
+                )
     return jobs
 
 
 def format_job_line(job: JobSlice) -> str:
     return (
         f"python run_main.py --model {job.model} --program {job.program} "
-        f"--seed-from {job.seed_from} --seed-to {job.seed_to}  # gpus={job.gpus}"
+        f"--seed-from {job.seed_from} --seed-to {job.seed_to} "
+        f"# model_id={job.model_id} gpus={job.gpus}"
     )
 
 

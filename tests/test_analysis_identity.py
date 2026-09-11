@@ -20,5 +20,5 @@ class AnalysisIdentityTests(unittest.TestCase):
         self.assertIn("USR1", text)
         self.assertIn("run_main.py", text)
         self.assertIn("artifact-root", text)
-        self.assertRegex(text, r"python3\s+-?\s*<<")
-        self.assertIn("vllm serve", text)
+        self.assertRegex(text, r'\$\{PYTHON\}"\s+-\s+<<')
+        self.assertIn('"${VLLM_BIN[@]}" serve', text)

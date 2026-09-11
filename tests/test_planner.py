@@ -23,7 +23,11 @@ class PlannerTests(unittest.TestCase):
         by_group: dict[tuple[str, str], list[tuple[int, int]]] = {}
         for job in jobs:
             by_group.setdefault((job.model, job.program), []).append((job.seed_from, job.seed_to))
-            self.assertIn("--seed-from", format_job_line(job))
+            line = format_job_line(job)
+            self.assertIn("--seed-from", line)
+            self.assertIn(f"--model {job.model}", line)
+            self.assertIn(f"model_id={job.model_id}", line)
+            self.assertIn("/", job.model_id)
         for (_model, _program), ranges in by_group.items():
             covered = []
             for start, end in ranges:

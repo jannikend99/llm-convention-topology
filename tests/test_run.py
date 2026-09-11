@@ -17,6 +17,7 @@ from convention_topology.run import (
     StopRequested,
     build_run_config,
     execute_run,
+    job_forensics,
 )
 from convention_topology.seeds import environment_seed, model_seed
 
@@ -65,6 +66,9 @@ class RecordingTests(unittest.TestCase):
                 self.assertIn(key, meta)
                 self.assertIsNotNone(meta[key])
             self.assertEqual(meta["sampling_plan"], "fixed_attempted")
+            self.assertIsNone(meta["gpu_ids"])
+            self.assertIsNone(meta["gpu_type"])
+            self.assertIsNone(meta["vllm_version"])
             self.assertEqual(set(SIDECAR_FIELDS), set(meta))
             self.assertNotIn("eligibility", meta)
             events = read_events(paths.events_path)
@@ -524,6 +528,63 @@ class ResumeTests(unittest.TestCase):
             self.assertEqual(behind.rng_pairing.getstate(), control.rng_pairing.getstate())
             self.assertEqual(behind.rng_option.getstate(), control.rng_option.getstate())
             self.assertEqual(_pair(behind.simulation, behind.rng_pairing), _pair(control.simulation, control.rng_pairing))
+
+
+class JobForensicsTests(unittest.TestCase):
+    def test_laptop_env_stays_null(self):
+        fields = job_forensics({"CUDA_VISIBLE_DEVICES": "0", "VLLM_VERSION": "0.8.0"})
+        self.assertIsNone(fields["gpu_ids"])
+        self.assertIsNone(fields["gpu_type"])
+        self.assertIsNone(fields["vllm_version"])
+        self.assertIsNone(fields["torch_version"])
+
+    def test_slurm_env_fills_sidecar_fields(self):
+        fields = job_forensics(
+            {
+                "SLURM_JOB_ID": "12345",
+                "CUDA_VISIBLE_DEVICES": "0,1",
+                "GPU_TYPE": "measured-after-fit",
+                "VLLM_VERSION": "0.8.5",
+                "TORCH_VERSION": "2.6.0",
+            }
+        )
+        self.assertEqual(fields["gpu_ids"], ["0", "1"])
+        self.assertEqual(fields["gpu_type"], "measured-after-fit")
+        self.assertEqual(fields["vllm_version"], "0.8.5")
+        self.assertEqual(fields["torch_version"], "2.6.0")
+
+    def test_slurm_job_gpus_fallback(self):
+        fields = job_forensics({"SLURM_JOB_ID": "99", "SLURM_JOB_GPUS": "3", "SLURM_GPU_TYPE": "from-slurm"})
+        self.assertEqual(fields["gpu_ids"], ["3"])
+        self.assertEqual(fields["gpu_type"], "from-slurm")
+
+    def test_execute_run_writes_forensics_when_slurm_env_set(self):
+        import os
+        from unittest.mock import patch
+
+        env = {
+            **os.environ,
+            "SLURM_JOB_ID": "555",
+            "CUDA_VISIBLE_DEVICES": "2",
+            "GPU_TYPE": "from-env",
+            "VLLM_VERSION": "9.9.9",
+            "TORCH_VERSION": "1.2.3",
+        }
+        with patch.dict(os.environ, env, clear=True), TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _files = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=2, memory_size=12)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            paths = execute_run(cfg, client, campaign_dir=root)
+            meta = read_meta(paths.meta_path)
+            self.assertEqual(meta["gpu_ids"], ["2"])
+            self.assertEqual(meta["gpu_type"], "from-env")
+            self.assertEqual(meta["vllm_version"], "9.9.9")
+            self.assertEqual(meta["torch_version"], "1.2.3")
 
 
 if __name__ == "__main__":

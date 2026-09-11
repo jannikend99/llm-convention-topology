@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import fcntl
+import importlib.metadata
 import os
 import random
 import signal
@@ -159,6 +160,47 @@ class RunConfig:
 
 def default_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _package_version(name: str) -> str | None:
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def _gpu_ids_from_env(env: Mapping[str, str]) -> list[str] | None:
+    for key in ("CUDA_VISIBLE_DEVICES", "SLURM_JOB_GPUS", "SLURM_STEP_GPUS", "SLURM_GPUS_ON_NODE"):
+        raw = env.get(key)
+        if raw is None:
+            continue
+        parts = [part.strip() for part in str(raw).replace(";", ",").split(",") if part.strip()]
+        if parts:
+            return parts
+    return None
+
+
+def job_forensics(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
+    """GPU/vLLM sidecar fields from the job environment. Laptop/mock: all None."""
+    env = os.environ if environ is None else environ
+    empty = {"gpu_ids": None, "gpu_type": None, "vllm_version": None, "torch_version": None}
+    if not env.get("SLURM_JOB_ID"):
+        return empty
+    gpu_type = env.get("GPU_TYPE") or env.get("SLURM_GPU_TYPE") or None
+    if gpu_type == "":
+        gpu_type = None
+    vllm_version = env.get("VLLM_VERSION") or _package_version("vllm")
+    torch_version = env.get("TORCH_VERSION") or _package_version("torch")
+    if not vllm_version:
+        vllm_version = None
+    if not torch_version:
+        torch_version = None
+    return {
+        "gpu_ids": _gpu_ids_from_env(env),
+        "gpu_type": gpu_type,
+        "vllm_version": vllm_version,
+        "torch_version": torch_version,
+    }
 
 
 def build_run_config(
@@ -370,14 +412,11 @@ def _sidecar(cfg: RunConfig, run_id: str, run_key: dict, state: RunState, *, sta
             "provider": cfg.provider if cfg.provider != "mock" else "openai_compat",
             "endpoint_base_url": cfg.endpoint_base_url or "http://127.0.0.1:0/v1",
             "cloud_credential_used": False,
-            "vllm_version": None,
-            "torch_version": None,
+            **job_forensics(),
             "python_version": sys.version.split()[0],
             "dtype": cfg.dtype,
             "quantization": cfg.quantization,
             "tensor_parallel": cfg.tensor_parallel,
-            "gpu_ids": None,
-            "gpu_type": None,
             "max_concurrent_runs": cfg.max_concurrent_runs,
             "in_flight_limit": cfg.in_flight_limit,
             "max_num_seqs": cfg.max_num_seqs,

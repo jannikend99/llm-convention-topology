@@ -29,11 +29,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed-to", type=int, default=None)
     parser.add_argument("--config", default=None)
     parser.add_argument("--artifact-root", default=None)
+    parser.add_argument("--campaign", default=None)
     parser.add_argument("--base-url", default=None)
     parser.add_argument("--mock-policy", default="imitate_modal")
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
+    if args.campaign:
+        config["run"]["campaign"] = args.campaign
     if args.print_jobs:
         for job in print_jobs(config, program=args.program):
             print(format_job_line(job))
