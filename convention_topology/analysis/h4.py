@@ -1,8 +1,4 @@
-"""H4 (exploratory): incumbent-label frequencies (WORKING.md §8).
-
-Descriptive frequencies of the modal Phase 1 incumbent label (mixing);
-optional chi-square goodness-of-fit vs. uniform (scipy).
-"""
+"""H4 (exploratory): Study-1 mixing winners from the interaction stream + pool."""
 
 from __future__ import annotations
 
@@ -12,19 +8,27 @@ from typing import Any, Sequence
 from scipy.stats import chisquare
 
 
-def h4_analysis(incumbent_labels: Sequence[str]) -> dict[str, Any]:
-    labels = [label for label in incumbent_labels if label is not None]
+def h4_analysis(winners: Sequence[str], pool: Sequence[str] | None = None) -> dict[str, Any]:
+    labels = [label for label in winners if label]
     n = len(labels)
     if n == 0:
-        return {"n": 0, "frequencies": {}}
+        frequencies = {label: 0.0 for label in (pool or [])}
+        return {"n": 0, "frequencies": frequencies, "counts": dict.fromkeys(pool or [], 0)}
 
     counts = Counter(labels)
+    if pool:
+        for label in pool:
+            counts.setdefault(label, 0)
     frequencies = {label: count / n for label, count in counts.items()}
-    result: dict[str, Any] = {"n": n, "frequencies": frequencies}
+    result: dict[str, Any] = {"n": n, "frequencies": frequencies, "counts": dict(counts)}
 
-    if len(counts) >= 2:
-        observed = list(counts.values())
-        stat, p = chisquare(observed)
-        result["chi2_stat"] = float(stat)
-        result["chi2_p"] = float(p)
+    keys = list(pool) if pool else list(counts)
+    observed = [counts[label] for label in keys]
+    if len(observed) >= 2 and n >= 2 and any(v > 0 for v in observed):
+        try:
+            stat, p = chisquare(observed)
+            result["chi2_stat"] = float(stat)
+            result["chi2_p"] = float(p)
+        except ValueError:
+            pass
     return result

@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 
 import numpy as np
+import pandas as pd
 import statsmodels.api as sm
 from numpy.linalg import LinAlgError
 from scipy.stats import chi2
@@ -126,3 +127,13 @@ def sensitivity_50_agreement(flip_95: Sequence[int], flip_50: Sequence[int]) -> 
     if n == 0:
         return {"n": 0, "agreement_rate": None}
     return {"n": n, "agreement_rate": float((a == b).mean())}
+
+
+def empirical_flip_rates(runs_df: pd.DataFrame) -> pd.DataFrame:
+    columns = ["topology", "cm_k", "flip_rate", "n"]
+    if runs_df.empty:
+        return pd.DataFrame(columns=columns)
+    grouped = runs_df.groupby(["topology", "cm_k"], as_index=False).agg(
+        flip_rate=("flip", "mean"), n=("flip", "size")
+    )
+    return grouped[columns]

@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from convention_topology.analysis.dispatch import run_all
+from convention_topology.analysis.dispatch import STUBBED_MEMORY, run_all
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,8 +31,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--all", action="store_true")
     args = parser.parse_args(argv)
 
-    if not args.model and not args.cross_model and not args.memory_decision_compare:
-        parser.error("--model is required unless --cross-model or --memory-decision-compare")
+    if args.memory_decision or args.memory_decision_compare:
+        parser.error(STUBBED_MEMORY)
+
+    if not args.model and not args.cross_model:
+        parser.error("--model is required unless --cross-model")
 
     run_all(
         Path(args.data),
@@ -45,8 +48,8 @@ def main(argv: list[str] | None = None) -> int:
         h4=args.h4,
         gate_summary=args.gate_summary,
         cross_model=args.cross_model,
-        memory_decision=args.memory_decision,
-        memory_decision_compare=args.memory_decision_compare,
+        memory_decision=False,
+        memory_decision_compare=False,
         sensitivity_50=args.sensitivity_50,
         all_=args.all,
     )

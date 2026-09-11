@@ -88,10 +88,10 @@ def flip(
     != committed_to) scores 0, not a separate category.
 
     Raises `ValueError` if the tracker has fewer than `t_start + window`
-    interactions (N5): with the thesis-locked `phase2_horizon=1000 >> window=72`
-    this is unreachable in normal operation, but a misconfigured/short Phase 2
-    must fail loudly rather than silently returning 0 -- indistinguishable
-    from a genuine non-flip.
+    interactions (N5): with the thesis-locked `phase2_horizon=1000` and
+    `window=144` this is unreachable in normal operation, but a
+    misconfigured/short Phase 2 must fail loudly rather than silently
+    returning 0 -- indistinguishable from a genuine non-flip.
     """
     n = len(tracker["outcome"])
     if n < t_start + window:

@@ -1,9 +1,4 @@
-"""Cross-model robustness comparison (WORKING.md §8) -- descriptive only.
-
-Llama-3.1-70B is the primary confirmatory model; the other three are
-descriptive robustness strata. This module never pools or runs inference
-across models (Methods cross-model rule, locked).
-"""
+"""Cross-model robustness comparison — Slate A models are confirmatory, not ranked."""
 
 from __future__ import annotations
 
@@ -24,17 +19,17 @@ def cross_model_summary(per_model_run_tables: dict[str, pd.DataFrame]) -> dict[s
             if not cm.empty
             else cm
         )
-        attempted_emergence = (
+        gated_emergence = (
             emergence[emergence["gate_passed"] == True]  # noqa: E712
             if not emergence.empty and "gate_passed" in emergence.columns
             else emergence
         )
         summary[model] = {
             "n_eligible": len(eligible_cm),
-            "n_attempted": len(attempted_emergence),
+            "n_attempted": len(gated_emergence),
             "mean_dominant_share": (
-                float(attempted_emergence["dominant_share"].mean())
-                if not attempted_emergence.empty
+                float(gated_emergence["dominant_share"].mean())
+                if not gated_emergence.empty and "dominant_share" in gated_emergence.columns
                 else None
             ),
             "flip_rate": (
