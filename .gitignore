@@ -22,6 +22,10 @@ logs/
 *.pickle
 *.parquet
 
+# Slurm stdio if a job still writes next to the recipe
+jobs/*.out
+jobs/*.err
+
 # OS / IDE
 .DS_Store
 .idea/
