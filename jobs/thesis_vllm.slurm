@@ -21,10 +21,28 @@ set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
 
 SCRATCH="/scratch/shared/${USER}"
+if [[ ! -d "${SCRATCH}" && -d "/yen/scratch/shared/${USER}" ]]; then
+  SCRATCH="/yen/scratch/shared/${USER}"
+fi
+if SCRATCH_REAL="$(readlink -f "${SCRATCH}" 2>/dev/null)" && [[ -d "${SCRATCH_REAL}" ]]; then
+  SCRATCH="${SCRATCH_REAL}"
+fi
 VLLM_PIN="${VLLM_PIN:-v0.28.0}"
 DEFAULT_SIF="${SCRATCH}/images/vllm-openai-${VLLM_PIN}.sif"
+HF_HOME="${SCRATCH}/models"
+export HF_HOME
+export HUGGINGFACE_HUB_CACHE="${HF_HOME}/hub"
+export TRANSFORMERS_CACHE="${HF_HOME}/transformers"
+export HF_HUB_CACHE="${HF_HOME}/hub"
+export XDG_CACHE_HOME="${HF_HOME}/xdg"
+export TMPDIR="${SCRATCH}/tmp"
+mkdir -p "${HF_HOME}" "${HUGGINGFACE_HUB_CACHE}" "${TRANSFORMERS_CACHE}" "${XDG_CACHE_HOME}" "${TMPDIR}"
 
 module purge
+
+# Client venv: requirements.txt needs networkx>=3.6 (Python 3.11+). Yen /usr/bin/python3 is 3.10.12.
+PYTHON_MODULE="${PYTHON_MODULE:-python/3.11.3}"
+module load "${PYTHON_MODULE}"
 
 if [[ -z "${VLLM_MODULE:-}" && -z "${VLLM_SIF:-}" && -z "${VLLM_LAUNCH:-}" && -f "${DEFAULT_SIF}" ]]; then
   VLLM_SIF="${DEFAULT_SIF}"
@@ -44,7 +62,19 @@ fi
 if [[ -n "${VLLM_LAUNCH:-}" ]]; then
   read -r -a VLLM_BIN <<< "${VLLM_LAUNCH}"
 elif [[ -n "${VLLM_SIF:-}" ]]; then
-  VLLM_BIN=(apptainer exec --nv "${VLLM_SIF}" vllm)
+  # GPU nodes expose /scratch as a read-only mount. Bind the real shared tree and
+  # drop host cache env so Hugging Face does not mkdir /scratch.
+  VLLM_BIN=(
+    apptainer exec --nv --cleanenv
+    --bind "${SCRATCH}:${SCRATCH}"
+    --env "HF_HOME=${HF_HOME}"
+    --env "HUGGINGFACE_HUB_CACHE=${HUGGINGFACE_HUB_CACHE}"
+    --env "TRANSFORMERS_CACHE=${TRANSFORMERS_CACHE}"
+    --env "HF_HUB_CACHE=${HF_HUB_CACHE}"
+    --env "XDG_CACHE_HOME=${XDG_CACHE_HOME}"
+    --env "TMPDIR=${TMPDIR}"
+    "${VLLM_SIF}" vllm
+  )
 else
   VLLM_BIN=(vllm)
 fi
@@ -53,8 +83,6 @@ CAMPAIGN="${CAMPAIGN:-technical-smoke}"
 ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"
 VENV="${SCRATCH}/venvs/thesis"
 VLLM_LOG="${SCRATCH}/vllm/thesis_${SLURM_JOB_ID}.log"
-HF_HOME="${SCRATCH}/models"
-export HF_HOME
 
 : "${MODEL:?set MODEL to a config.yaml shorthand (from --print-jobs or a fit hand flag)}"
 : "${SEED_TO:?set SEED_TO so a missing flag cannot run the full seed grid as technical-smoke}"
@@ -65,7 +93,7 @@ mkdir -p "${ARTIFACT_ROOT}" "$(dirname "${VLLM_LOG}")" "$(dirname "${VENV}")"
 
 if [[ ! -x "${VENV}/bin/python" ]]; then
   echo "Creating thesis venv at ${VENV}"
-  /usr/bin/python3 -m venv "${VENV}"
+  python3 -m venv "${VENV}"
   "${VENV}/bin/python" -m pip install -r requirements.txt
 fi
 # shellcheck disable=SC1091
