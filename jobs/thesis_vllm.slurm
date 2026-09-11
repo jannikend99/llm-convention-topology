@@ -1,7 +1,7 @@
 #!/bin/bash
 # Thesis counted-path job. vLLM pin: v0.28.0 (stable as of 2026-09-11).
 # Prefer VLLM_SIF=${SCRATCH}/images/vllm-openai-v0.28.0.sif after apptainer pull.
-# Override with VLLM_MODULE / VLLM_SIF / VLLM_LAUNCH. #SBATCH -C is an operator fill after a fit.
+# Override with VLLM_MODULE / VLLM_SIF / VLLM_LAUNCH. BF16 Lightning needs H200 (24/48 GB OOMs).
 # Not the repo-root Ollama smoke.
 #SBATCH --job-name=thesis-vllm
 #SBATCH -p gpu
@@ -14,8 +14,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=jannik.endress@stanford.edu
 #SBATCH --signal=B:USR1@300
-# Operator GPU feature after fit (leave commented until then):
-# #SBATCH -C "GPU_MODEL:...."
+#SBATCH -C "GPU_MODEL:H200"
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
