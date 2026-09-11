@@ -30,18 +30,9 @@ fi
 VLLM_PIN="${VLLM_PIN:-v0.28.0}"
 DEFAULT_SIF="${SCRATCH}/images/vllm-openai-${VLLM_PIN}.sif"
 HF_HOME="${SCRATCH}/models"
-export HF_HOME
-export HUGGINGFACE_HUB_CACHE="${HF_HOME}/hub"
-export TRANSFORMERS_CACHE="${HF_HOME}/transformers"
-export HF_HUB_CACHE="${HF_HOME}/hub"
-export XDG_CACHE_HOME="${HF_HOME}/xdg"
-export TMPDIR="${SCRATCH}/tmp"
 WRAP_HOME="${SCRATCH}/container-home"
-WRAP_FLASHINFER="${SCRATCH}/flashinfer"
-WRAP_TRITON="${SCRATCH}/triton"
-WRAP_TORCH="${SCRATCH}/torchinductor"
-mkdir -p "${HF_HOME}" "${HUGGINGFACE_HUB_CACHE}" "${TRANSFORMERS_CACHE}" "${XDG_CACHE_HOME}" "${TMPDIR}" \
-  "${WRAP_HOME}" "${WRAP_FLASHINFER}" "${WRAP_TRITON}" "${WRAP_TORCH}" "${SCRATCH}/vllm"
+export HF_HOME
+mkdir -p "${HF_HOME}" "${WRAP_HOME}" "${SCRATCH}/tmp" "${SCRATCH}/vllm"
 
 module purge
 
@@ -67,39 +58,18 @@ fi
 if [[ -n "${VLLM_LAUNCH:-}" ]]; then
   read -r -a VLLM_BIN <<< "${VLLM_LAUNCH}"
 elif [[ -n "${VLLM_SIF:-}" ]]; then
-  # Yen forbids APPTAINERENV_HOME and cannot mkdir the Apptainer prefix .cache as a bind dest.
-  # Set HOME inside the container via a scratch wrapper (inherited by vLLM inspect subprocesses).
+  # Yen forbids APPTAINERENV_HOME. Bake HOME into a scratch wrapper instead.
   WRAP="${SCRATCH}/vllm_wrap.sh"
-  cat > "${WRAP}" <<'WRAP'
+  cat > "${WRAP}" <<EOF
 #!/bin/bash
-set -euo pipefail
-export HOME="${WRAP_HOME}"
-export FLASHINFER_WORKSPACE_DIR="${WRAP_FLASHINFER}"
-export XDG_CACHE_HOME="${WRAP_XDG}"
-export TMPDIR="${WRAP_TMPDIR}"
-export TRITON_CACHE_DIR="${WRAP_TRITON}"
-export TORCHINDUCTOR_CACHE_DIR="${WRAP_TORCH}"
-export HF_HOME="${WRAP_HF_HOME}"
-export HUGGINGFACE_HUB_CACHE="${WRAP_HF_HUB}"
-export TRANSFORMERS_CACHE="${WRAP_TF}"
-export HF_HUB_CACHE="${WRAP_HF_HUB}"
-mkdir -p "${HOME}" "${FLASHINFER_WORKSPACE_DIR}" "${XDG_CACHE_HOME}" "${TMPDIR}" \
-  "${TRITON_CACHE_DIR}" "${TORCHINDUCTOR_CACHE_DIR}"
-exec vllm "$@"
-WRAP
+export HOME=${WRAP_HOME}
+export HF_HOME=${HF_HOME}
+exec vllm "\$@"
+EOF
   chmod +x "${WRAP}"
   VLLM_BIN=(
     apptainer exec --nv
     --bind "${SCRATCH}:${SCRATCH}"
-    --env "WRAP_HOME=${WRAP_HOME}"
-    --env "WRAP_FLASHINFER=${WRAP_FLASHINFER}"
-    --env "WRAP_XDG=${XDG_CACHE_HOME}"
-    --env "WRAP_TMPDIR=${TMPDIR}"
-    --env "WRAP_TRITON=${WRAP_TRITON}"
-    --env "WRAP_TORCH=${WRAP_TORCH}"
-    --env "WRAP_HF_HOME=${HF_HOME}"
-    --env "WRAP_HF_HUB=${HUGGINGFACE_HUB_CACHE}"
-    --env "WRAP_TF=${TRANSFORMERS_CACHE}"
     "${VLLM_SIF}"
     "${WRAP}"
   )
