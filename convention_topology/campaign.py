@@ -71,7 +71,14 @@ def build_graphs_payload(config: Mapping[str, Any]) -> dict[str, Any]:
 def ensure_campaign_files(root: Path, config: Mapping[str, Any]) -> dict[str, Any]:
     root.mkdir(parents=True, exist_ok=True)
     protocol = config["protocol"]
-    pool_labels = draw_pool(seed=int(config["pool"]["seed"]), string_length=int(protocol["string_length"]))
+    explicit = config.get("pool", {}).get("labels")
+    if explicit:
+        pool_labels = list(explicit)
+    else:
+        pool_labels = draw_pool(
+            seed=int(config["pool"]["seed"]),
+            string_length=int(protocol["string_length"]),
+        )
     pool_payload = {
         "seed": int(config["pool"]["seed"]),
         "string_length": int(protocol["string_length"]),

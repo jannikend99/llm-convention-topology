@@ -41,7 +41,7 @@ run:
   artifact_root: ""
 
 jobs:
-  models: [nemotron35_lightning, gemma4_31b, qwen38_27b, mistral_small4]
+  models: [nemotron35_lightning, gemma4_31b, qwen38_27b, mistral_small32]
   programs: [emergence, cm]
 
 serve:
@@ -61,8 +61,8 @@ models:
     max_tokens: 512
     dtype: bfloat16
     quantization: null
-    gpus: 1
-    tp: 1
+    gpus: 2
+    tp: 2
     max_model_len: 8192
     max_concurrent_runs: 4
     in_flight_limit: 8
@@ -89,8 +89,8 @@ models:
     max_tokens: 512
     dtype: bfloat16
     quantization: null
-    gpus: 1
-    tp: 1
+    gpus: 2
+    tp: 2
     max_model_len: 8192
     max_concurrent_runs: 4
     in_flight_limit: 8
@@ -127,8 +127,27 @@ models:
     max_tokens: 512
     dtype: bfloat16
     quantization: null
-    gpus: 1
-    tp: 1
+    gpus: 2
+    tp: 2
+    max_model_len: 8192
+    max_concurrent_runs: 4
+    in_flight_limit: 8
+    max_num_seqs: 16
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+  mistral_small32:
+    model_id: mistralai/Mistral-Small-3.2-24B-Instruct-2506
+    revision: placeholder-revision
+    shorthand: mistral_small32
+    thinking: false
+    thinking_always_on: false
+    reasoning_effort: null
+    max_tokens: 512
+    dtype: bfloat16
+    quantization: null
+    gpus: 2
+    tp: 2
     max_model_len: 8192
     max_concurrent_runs: 4
     in_flight_limit: 8
@@ -146,8 +165,8 @@ models:
     max_tokens: 512
     dtype: bfloat16
     quantization: null
-    gpus: 1
-    tp: 1
+    gpus: 2
+    tp: 2
     max_model_len: 8192
     max_concurrent_runs: 4
     in_flight_limit: 8
@@ -203,8 +222,8 @@ models:
     max_tokens: 1024
     dtype: bfloat16
     quantization: null
-    gpus: 1
-    tp: 1
+    gpus: 2
+    tp: 2
     max_model_len: 8192
     max_concurrent_runs: 2
     in_flight_limit: 4
@@ -222,8 +241,8 @@ models:
     max_tokens: 1024
     dtype: bfloat16
     quantization: null
-    gpus: 1
-    tp: 1
+    gpus: 2
+    tp: 2
     max_model_len: 8192
     max_concurrent_runs: 2
     in_flight_limit: 4

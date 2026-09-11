@@ -9,9 +9,11 @@ import yaml
 
 from convention_topology.config import (
     ConfigError,
+    DIAG_LETTER_POOL,
     LOCK_PROTOCOL,
     SERVE_PROFILE_KEYS,
     TOPOLOGIES,
+    apply_diag_protocol,
     apply_serve_base_url,
     load_config,
     protocol_fingerprint,
@@ -82,7 +84,7 @@ class ConfigLockTests(unittest.TestCase):
     def test_default_jobs_models_are_the_four_shorthands(self):
         self.assertEqual(
             self.config["jobs"]["models"],
-            ["nemotron35_lightning", "gemma4_31b", "qwen38_27b", "mistral_small4"],
+            ["nemotron35_lightning", "gemma4_31b", "qwen38_27b", "mistral_small32"],
         )
 
     def test_gemma4_e2b_is_registry_only(self):
@@ -173,6 +175,30 @@ class BannedConfigTests(unittest.TestCase):
             path.write_text(yaml.safe_dump(payload))
             with self.assertRaises(ConfigError):
                 load_config(path)
+
+    def test_diag_protocol_requires_diag_campaign(self):
+        raw = self._raw()
+        with self.assertRaises(ConfigError):
+            apply_diag_protocol(raw, memory_h=5, pool_kind="letters")
+
+    def test_diag_protocol_allows_h5_letters_after_validate(self):
+        raw = self._raw()
+        raw["run"]["campaign"] = "diag-h5-letters"
+        apply_diag_protocol(raw, memory_h=5, pool_kind="letters", cap_phase1=1200)
+        self.assertEqual(raw["protocol"]["H"], 5)
+        self.assertEqual(raw["protocol"]["string_length"], 1)
+        self.assertEqual(raw["protocol"]["cap_phase1"], 1200)
+        self.assertEqual(raw["pool"]["labels"], list(DIAG_LETTER_POOL))
+        self.assertEqual(raw["protocol"]["N"], 48)
+        self.assertEqual(raw["protocol"]["gate_window"], 144)
+
+    def test_diag_protocol_strings_keeps_five_char_generator(self):
+        raw = self._raw()
+        raw["run"]["campaign"] = "diag-h5-strings"
+        apply_diag_protocol(raw, memory_h=5, pool_kind="strings", cap_phase1=1200)
+        self.assertEqual(raw["protocol"]["H"], 5)
+        self.assertEqual(raw["protocol"]["string_length"], 5)
+        self.assertNotIn("labels", raw["pool"])
 
 
 if __name__ == "__main__":

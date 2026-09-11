@@ -35,7 +35,7 @@ class PlannerTests(unittest.TestCase):
                 covered.extend(range(start, end))
             self.assertEqual(sorted(covered), list(range(32)))
         models = {job.model for job in jobs}
-        self.assertEqual(models, {"nemotron35_lightning", "gemma4_31b", "qwen38_27b", "mistral_small4"})
+        self.assertEqual(models, {"nemotron35_lightning", "gemma4_31b", "qwen38_27b", "mistral_small32"})
 
     def test_bad_slice_size_raises(self):
         with self.assertRaises(ValueError):

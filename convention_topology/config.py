@@ -292,6 +292,40 @@ def check_campaign_name(name: str) -> str:
     return campaign
 
 
+# Ashery emergence ten-letter set (not a counted default; diag campaigns only).
+DIAG_LETTER_POOL = ("Q", "M", "X", "Y", "F", "J", "P", "R", "C", "D")
+
+
+def apply_diag_protocol(
+    config: dict[str, Any],
+    *,
+    memory_h: int,
+    pool_kind: str,
+    cap_phase1: int | None = None,
+) -> dict[str, Any]:
+    """Override H / pool after validate_config. Counted defaults stay locked."""
+    campaign = str(config["run"]["campaign"])
+    if not campaign.startswith("diag-"):
+        raise ConfigError("diag protocol overrides require a campaign name starting with diag-")
+    if memory_h not in (5, 12):
+        raise ConfigError("diag memory_h must be 5 or 12")
+    if pool_kind not in ("strings", "letters"):
+        raise ConfigError("diag pool_kind must be strings or letters")
+    config["protocol"]["H"] = int(memory_h)
+    if cap_phase1 is not None:
+        cap = int(cap_phase1)
+        if cap < int(LOCK_PROTOCOL["gate_window"]) or cap > int(LOCK_PROTOCOL["cap_phase1"]):
+            raise ConfigError("diag cap_phase1 must lie between the gate window and the counted cap")
+        config["protocol"]["cap_phase1"] = cap
+    if pool_kind == "letters":
+        config["protocol"]["string_length"] = 1
+        config["pool"]["labels"] = list(DIAG_LETTER_POOL)
+    else:
+        config["pool"].pop("labels", None)
+        config["protocol"]["string_length"] = int(LOCK_PROTOCOL["string_length"])
+    return config
+
+
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
     config_path = Path(path) if path is not None else DEFAULT_CONFIG_PATH
     with config_path.open("r", encoding="utf-8") as handle:

@@ -8,7 +8,13 @@ import asyncio
 import os
 from pathlib import Path
 
-from convention_topology.config import apply_serve_base_url, check_campaign_name, load_config, resolve_model
+from convention_topology.config import (
+    apply_diag_protocol,
+    apply_serve_base_url,
+    check_campaign_name,
+    load_config,
+    resolve_model,
+)
 from convention_topology.git_guard import DirtyWorktreeError, require_clean_worktree
 from convention_topology.orchestration import format_job_line, print_jobs, run_slice_async
 from convention_topology.persistence import campaign_root
@@ -37,6 +43,18 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config(args.config)
     if args.campaign:
         config["run"]["campaign"] = check_campaign_name(args.campaign)
+    diag_h = os.environ.get("DIAG_H")
+    diag_pool = os.environ.get("DIAG_POOL")
+    diag_cap = os.environ.get("DIAG_CAP")
+    if diag_h or diag_pool or diag_cap:
+        if not diag_h or not diag_pool:
+            parser.error("DIAG_H and DIAG_POOL must be set together")
+        apply_diag_protocol(
+            config,
+            memory_h=int(diag_h),
+            pool_kind=str(diag_pool),
+            cap_phase1=int(diag_cap) if diag_cap else 1200,
+        )
     if args.print_jobs:
         for job in print_jobs(config, program=args.program):
             print(format_job_line(job))
