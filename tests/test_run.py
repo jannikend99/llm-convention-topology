@@ -266,6 +266,23 @@ class RecordingTests(unittest.TestCase):
             self.assertTrue(all(row["parse_method"] == "option_match" for row in attempts))
             self.assertEqual({row["enum_label"] for row in attempts}, {"Q"})
 
+    def test_counted_path_keeps_json_schema_and_rejects_free_text(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_EMERGENCE, root)
+            self.assertTrue(cfg.json_schema)
+            self.assertEqual(cfg.n, 48)
+            self.assertEqual(cfg.gate_window, 144)
+            cfg.max_phase1_interactions = 1
+            client = MockLLMClient(
+                policy="scripted",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                scripted_responses=[f"I choose {cfg.options[0]}."],
+            )
+            with self.assertRaises(RunFailedError):
+                execute_run(cfg, client, campaign_dir=root)
+
 
 async def _instant(_delay):
     return None

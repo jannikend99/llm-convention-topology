@@ -24,6 +24,13 @@ from convention_topology.run import PROGRAM_CM, PROGRAM_EMERGENCE
 
 REPO_ROOT = Path(__file__).resolve().parent
 
+DIAG_FULL_KNOB_PREFIXES = ("diag-ashery", "diag-h12-", "diag-n48-", "diag-strings-")
+
+
+def _campaign_requires_full_diag_knobs(campaign: str) -> bool:
+    name = str(campaign)
+    return name.startswith(DIAG_FULL_KNOB_PREFIXES)
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Counted naming-game campaign slice or planner.")
@@ -44,6 +51,18 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config(args.config)
     if args.campaign:
         config["run"]["campaign"] = check_campaign_name(args.campaign)
+    campaign_name = str(config["run"]["campaign"])
+    if _campaign_requires_full_diag_knobs(campaign_name):
+        missing = [
+            key
+            for key in ("DIAG_N", "DIAG_H", "DIAG_POOL", "DIAG_DECODE", "DIAG_CAP")
+            if not os.environ.get(key)
+        ]
+        if missing:
+            parser.error(
+                "this diag campaign requires DIAG_N, DIAG_H, DIAG_POOL, DIAG_DECODE, and DIAG_CAP; "
+                f"missing {', '.join(missing)}"
+            )
     diag_h = os.environ.get("DIAG_H")
     diag_pool = os.environ.get("DIAG_POOL")
     diag_cap = os.environ.get("DIAG_CAP")

@@ -32,6 +32,8 @@ class ConfigLockTests(unittest.TestCase):
         for key, expected in LOCK_PROTOCOL.items():
             self.assertEqual(self.config["protocol"][key], expected)
         self.assertEqual(self.config["protocol"]["gate_window"], 3 * self.config["protocol"]["N"])
+        self.assertNotIn("diag_decode", self.config["protocol"])
+        self.assertEqual(set(self.config["pool"]), {"seed"})
 
     def test_required_sections_and_identities(self):
         self.assertEqual(tuple(self.config["network"]["topologies"]), TOPOLOGIES)
@@ -125,6 +127,24 @@ class BannedConfigTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             validate_config(raw)
 
+    def test_rejects_h_5(self):
+        raw = self._raw()
+        raw["protocol"]["H"] = 5
+        with self.assertRaises(ConfigError):
+            validate_config(raw)
+
+    def test_rejects_yaml_diag_decode(self):
+        raw = self._raw()
+        raw["protocol"]["diag_decode"] = "parse"
+        with self.assertRaises(ConfigError):
+            validate_config(raw)
+
+    def test_rejects_yaml_pool_labels(self):
+        raw = self._raw()
+        raw["pool"]["labels"] = ["Q", "M"]
+        with self.assertRaises(ConfigError):
+            validate_config(raw)
+
     def test_rejects_letter_pool_keys(self):
         raw = self._raw()
         raw["options_emergence"] = ["Q", "M"]
@@ -209,12 +229,27 @@ class BannedConfigTests(unittest.TestCase):
         self.assertEqual(raw["protocol"]["gate_window"], 72)
         self.assertEqual(raw["protocol"]["diag_decode"], "parse")
         self.assertEqual(raw["protocol"]["string_length"], 1)
+        self.assertEqual(raw["protocol"]["cap_phase1"], 400)
+        self.assertEqual(raw["pool"]["labels"], list(DIAG_LETTER_POOL))
 
     def test_diag_tech_interactions_allows_tiny_cap(self):
         raw = self._raw()
         raw["run"]["campaign"] = "diag-tech-gemma4-31b"
         apply_diag_tech_interactions(raw, 5)
         self.assertEqual(raw["protocol"]["cap_phase1"], 5)
+
+    def test_diag_tech_interactions_requires_diag_campaign(self):
+        raw = self._raw()
+        with self.assertRaises(ConfigError):
+            apply_diag_tech_interactions(raw, 5)
+
+    def test_diag_tech_interactions_rejects_out_of_range(self):
+        raw = self._raw()
+        raw["run"]["campaign"] = "diag-tech-mock"
+        with self.assertRaises(ConfigError):
+            apply_diag_tech_interactions(raw, 0)
+        with self.assertRaises(ConfigError):
+            apply_diag_tech_interactions(raw, 21)
 
     def test_diag_protocol_strings_keeps_five_char_generator(self):
         raw = self._raw()

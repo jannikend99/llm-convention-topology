@@ -175,6 +175,9 @@ def _validate_protocol(raw: Mapping[str, Any]) -> None:
             raise ConfigError(
                 f"protocol.{key}={protocol[key]!r} does not equal lock {expected!r}"
             )
+    extra_protocol = sorted(set(protocol) - set(LOCK_PROTOCOL))
+    if extra_protocol:
+        raise ConfigError(f"protocol has unlocked keys: {extra_protocol}")
     n = int(protocol["N"])
     computed_window = 3 * n
     if int(protocol["gate_window"]) != computed_window:
@@ -206,6 +209,9 @@ def _validate_protocol(raw: Mapping[str, Any]) -> None:
     pool = raw.get("pool")
     if not isinstance(pool, dict) or "seed" not in pool:
         raise ConfigError("pool.seed is required")
+    extra_pool = sorted(set(pool) - {"seed"})
+    if extra_pool:
+        raise ConfigError(f"pool has unlocked keys: {extra_pool}")
     run = raw.get("run")
     if not isinstance(run, dict):
         raise ConfigError("config must contain a run section")

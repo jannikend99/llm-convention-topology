@@ -64,7 +64,9 @@ def main(argv: list[str] | None = None) -> int:
         artifact_root=str(root),
     )
     options = options_for_program(files["pool"]["labels"], args.program)
-    client = build_client(model_spec, args.mock_policy, cfg.model_seed, options)
+    client = build_client(
+        model_spec, args.mock_policy, cfg.model_seed, options, json_schema=cfg.json_schema
+    )
     paths = asyncio.run(execute_run_async(cfg, client, campaign_dir=root))
     status = read_meta(paths.meta_path)["run_status"]
     print(f"[done] run_id={paths.pickle_path.stem} status={status}", flush=True)

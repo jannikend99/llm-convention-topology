@@ -71,6 +71,78 @@ class ClientTests(unittest.TestCase):
         spec = resolve_model(load_config(), "nemotron35_lightning")
         self.assertEqual(spec.api_key, "EMPTY")
 
+    def test_parse_mode_omits_response_format(self):
+        captured: dict = {}
+
+        class _FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+
+                class _Msg:
+                    content = json.dumps({"value": "aaaaa", "reason": "ok"})
+                    reasoning = None
+
+                class _Choice:
+                    message = _Msg()
+                    finish_reason = "stop"
+
+                class _Usage:
+                    prompt_tokens = 1
+                    completion_tokens = 1
+
+                class _Resp:
+                    choices = [_Choice()]
+                    usage = _Usage()
+                    model = "x"
+
+                return _Resp()
+
+        client = OpenAICompatClient(
+            base_url="http://127.0.0.1:9/v1",
+            model_id="x",
+            json_schema=False,
+        )
+        client._client.chat.completions = _FakeCompletions()
+        client.complete("prompt", options=OPTIONS)
+        self.assertNotIn("response_format", captured)
+        self.assertEqual(captured["temperature"], 0.5)
+
+    def test_schema_mode_sends_response_format(self):
+        captured: dict = {}
+
+        class _FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+
+                class _Msg:
+                    content = json.dumps({"value": "aaaaa", "reason": "ok"})
+                    reasoning = None
+
+                class _Choice:
+                    message = _Msg()
+                    finish_reason = "stop"
+
+                class _Usage:
+                    prompt_tokens = 1
+                    completion_tokens = 1
+
+                class _Resp:
+                    choices = [_Choice()]
+                    usage = _Usage()
+                    model = "x"
+
+                return _Resp()
+
+        client = OpenAICompatClient(
+            base_url="http://127.0.0.1:9/v1",
+            model_id="x",
+            json_schema=True,
+        )
+        client._client.chat.completions = _FakeCompletions()
+        client.complete("prompt", options=OPTIONS)
+        self.assertIn("response_format", captured)
+        self.assertEqual(captured["response_format"]["type"], "json_schema")
+
     def test_openai_extra_body_turns_thinking_off(self):
         extra = openai_extra_body(thinking=False, reasoning_effort=None)
         self.assertEqual(extra["chat_template_kwargs"]["enable_thinking"], False)

@@ -62,6 +62,10 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertNotIn("--cleanenv", job)
         self.assertNotIn("--home", job)
         self.assertNotIn('--env "HOME=', job)
+        self.assertIn('--env "NCCL_P2P_DISABLE=', job)
+        self.assertIn('export NCCL_P2P_DISABLE=', job)
+        self.assertIn("SERVE_HANG_SECONDS", job)
+        self.assertIn("shm_broadcast", job)
         self.assertIn("vllm_wrap.sh", job)
         self.assertIn("/scratch/shared/%u/vllm/thesis_vllm_%j.out", job)
         self.assertIn("/yen/scratch/shared", job)
@@ -85,6 +89,19 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn("# Wait until /v1/models answers", job)
         self.assertIn("VLLM_EXTRA", job)
         self.assertIn("--enable-log-requests", job)
+        self.assertIn("--disable-custom-all-reduce", job)
+        self.assertIn("Keep model YAML extras", job)
+        self.assertIn("diag-ashery-*", job)
+        self.assertIn("DIAG_DECODE", job)
+        self.assertIn("DIAG_LADDER", job)
+        self.assertIn("diag-ashery-parse-", job)
+        self.assertIn("diag-ashery-schema-", job)
+        self.assertIn("diag-h12-", job)
+        self.assertIn("diag-n48-", job)
+        self.assertIn("diag-strings-", job)
+        self.assertIn("cannot be combined with CAMPAIGN", job)
+        self.assertIn("cannot be combined with DIAG_TECH_INTERACTIONS", job)
+        self.assertIn("run_counted_slice", job)
         self.assertIn("thesis_${SLURM_JOB_ID}.log", job)
 
     def test_run_main_cli_base_url_reaches_model_spec(self):
@@ -145,6 +162,182 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(captured["campaign"], "pilot-run")
         self.assertEqual(Path(captured["campaign_dir"]), root)
+
+    def test_run_main_ashery_without_diag_env_fails(self):
+        cleared = {
+            "DIAG_N": "",
+            "DIAG_H": "",
+            "DIAG_POOL": "",
+            "DIAG_DECODE": "",
+            "DIAG_CAP": "",
+        }
+        with patch.dict("os.environ", cleared, clear=False):
+            with patch("run_main.require_clean_worktree"):
+                with self.assertRaises(SystemExit) as raised:
+                    run_main.main(
+                        [
+                            "--model",
+                            "mock",
+                            "--program",
+                            "emergence",
+                            "--seed-from",
+                            "0",
+                            "--seed-to",
+                            "1",
+                            "--campaign",
+                            "diag-ashery-parse-mock",
+                        ]
+                    )
+        self.assertNotEqual(raised.exception.code, 0)
+
+    def test_run_main_one_factor_campaign_without_diag_env_fails(self):
+        cleared = {
+            "DIAG_N": "",
+            "DIAG_H": "",
+            "DIAG_POOL": "",
+            "DIAG_DECODE": "",
+            "DIAG_CAP": "",
+        }
+        with patch.dict("os.environ", cleared, clear=False):
+            with patch("run_main.require_clean_worktree"):
+                with self.assertRaises(SystemExit) as raised:
+                    run_main.main(
+                        [
+                            "--model",
+                            "mock",
+                            "--program",
+                            "emergence",
+                            "--seed-from",
+                            "0",
+                            "--seed-to",
+                            "1",
+                            "--campaign",
+                            "diag-h12-parse-mock",
+                        ]
+                    )
+        self.assertNotEqual(raised.exception.code, 0)
+
+    def test_run_main_ashery_diag_env_reaches_protocol(self):
+        captured = {}
+
+        async def fake_slice(config, model_spec, **kwargs):
+            captured["protocol"] = dict(config["protocol"])
+            captured["pool"] = dict(config["pool"])
+            return []
+
+        env = {
+            "DIAG_N": "24",
+            "DIAG_H": "5",
+            "DIAG_POOL": "letters",
+            "DIAG_DECODE": "parse",
+            "DIAG_CAP": "400",
+        }
+        with patch.dict("os.environ", env, clear=False):
+            with patch("run_main.require_clean_worktree"), patch(
+                "run_main.run_slice_async", side_effect=fake_slice
+            ):
+                code = run_main.main(
+                    [
+                        "--model",
+                        "mock",
+                        "--program",
+                        "emergence",
+                        "--seed-from",
+                        "0",
+                        "--seed-to",
+                        "1",
+                        "--campaign",
+                        "diag-ashery-parse-mock",
+                    ]
+                )
+        self.assertEqual(code, 0)
+        self.assertEqual(captured["protocol"]["N"], 24)
+        self.assertEqual(captured["protocol"]["H"], 5)
+        self.assertEqual(captured["protocol"]["gate_window"], 72)
+        self.assertEqual(captured["protocol"]["diag_decode"], "parse")
+        self.assertEqual(captured["protocol"]["cap_phase1"], 400)
+        self.assertEqual(captured["pool"]["labels"][0], "Q")
+
+    def test_run_main_h12_diag_env_reaches_protocol(self):
+        captured = {}
+
+        async def fake_slice(config, model_spec, **kwargs):
+            captured["protocol"] = dict(config["protocol"])
+            return []
+
+        env = {
+            "DIAG_N": "24",
+            "DIAG_H": "12",
+            "DIAG_POOL": "letters",
+            "DIAG_DECODE": "parse",
+            "DIAG_CAP": "400",
+        }
+        with patch.dict("os.environ", env, clear=False):
+            with patch("run_main.require_clean_worktree"), patch(
+                "run_main.run_slice_async", side_effect=fake_slice
+            ):
+                code = run_main.main(
+                    [
+                        "--model",
+                        "mock",
+                        "--program",
+                        "emergence",
+                        "--seed-from",
+                        "0",
+                        "--seed-to",
+                        "1",
+                        "--campaign",
+                        "diag-h12-parse-mock",
+                    ]
+                )
+        self.assertEqual(code, 0)
+        self.assertEqual(captured["protocol"]["N"], 24)
+        self.assertEqual(captured["protocol"]["H"], 12)
+        self.assertEqual(captured["protocol"]["gate_window"], 72)
+        self.assertEqual(captured["protocol"]["diag_decode"], "parse")
+
+    def test_run_main_diag_tech_does_not_require_full_knobs(self):
+        captured = {}
+
+        async def fake_slice(config, model_spec, **kwargs):
+            captured["N"] = config["protocol"]["N"]
+            captured["campaign"] = config["run"]["campaign"]
+            return []
+
+        cleared = {
+            "DIAG_N": "",
+            "DIAG_H": "",
+            "DIAG_POOL": "",
+            "DIAG_DECODE": "",
+            "DIAG_CAP": "",
+        }
+        with patch.dict("os.environ", cleared, clear=False):
+            with patch("run_main.require_clean_worktree"), patch(
+                "run_main.run_slice_async", side_effect=fake_slice
+            ):
+                code = run_main.main(
+                    [
+                        "--model",
+                        "mock",
+                        "--program",
+                        "emergence",
+                        "--seed-from",
+                        "0",
+                        "--seed-to",
+                        "1",
+                        "--campaign",
+                        "diag-tech-mock",
+                    ]
+                )
+        self.assertEqual(code, 0)
+        self.assertEqual(captured["campaign"], "diag-tech-mock")
+        self.assertEqual(captured["N"], 48)
+
+    def test_run_one_passes_json_schema_to_client(self):
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parent.parent / "run_one.py").read_text(encoding="utf-8")
+        self.assertIn("json_schema=cfg.json_schema", source)
 
     def test_run_main_print_jobs_emits_hf_id_and_shorthand(self):
         from io import StringIO

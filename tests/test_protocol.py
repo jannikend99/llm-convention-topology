@@ -4,7 +4,7 @@ import random
 import unittest
 
 from convention_topology.config import TOPOLOGIES, load_config
-from convention_topology.gate import MIN_SUCCESSES, first_gate_time, has_tracker_converged
+from convention_topology.gate import MIN_SUCCESSES, first_gate_time, has_tracker_converged, min_gate_successes
 from convention_topology.networks import adjacency_hash, get_interaction_network
 from convention_topology.orchestration import cell_grid
 from convention_topology.pool import draw_pool, options_for_program
@@ -71,5 +71,6 @@ class ProtocolIdentityTests(unittest.TestCase):
         late = [0] * 10 + [1] * 137
         self.assertEqual(first_gate_time(late), 147)
         short = [1] * 69 + [0] * 3
+        self.assertEqual(min_gate_successes(72), 69)
         self.assertTrue(has_tracker_converged({"outcome": short}, window=72))
         self.assertFalse(has_tracker_converged({"outcome": [1] * 68 + [0] * 4}, window=72))

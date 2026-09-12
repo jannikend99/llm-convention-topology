@@ -31,6 +31,7 @@ DEFAULT_SIF="${SCRATCH}/images/vllm-openai-${VLLM_PIN}.sif"
 HF_HOME="${SCRATCH}/models"
 WRAP_HOME="${SCRATCH}/container-home"
 export HF_HOME
+export NCCL_P2P_DISABLE="${NCCL_P2P_DISABLE:-1}"
 mkdir -p "${HF_HOME}" "${WRAP_HOME}" "${SCRATCH}/tmp" "${SCRATCH}/vllm"
 
 module purge
@@ -63,11 +64,13 @@ elif [[ -n "${VLLM_SIF:-}" ]]; then
 #!/bin/bash
 export HOME=${WRAP_HOME}
 export HF_HOME=${HF_HOME}
+export NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE}
 exec vllm "\$@"
 EOF
   chmod +x "${WRAP}"
   VLLM_BIN=(
     apptainer exec --nv
+    --env "NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE}"
     --bind "${SCRATCH}:${SCRATCH}"
     "${VLLM_SIF}"
     "${WRAP}"
@@ -76,8 +79,6 @@ else
   VLLM_BIN=(vllm)
 fi
 
-CAMPAIGN="${CAMPAIGN:-technical-smoke}"
-ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"
 VENV="${SCRATCH}/venvs/thesis"
 VLLM_LOG="${SCRATCH}/vllm/thesis_${SLURM_JOB_ID}.log"
 
@@ -85,6 +86,42 @@ VLLM_LOG="${SCRATCH}/vllm/thesis_${SLURM_JOB_ID}.log"
 : "${SEED_TO:?set SEED_TO so a missing flag cannot run the full seed grid as technical-smoke}"
 : "${TOPOLOGY:?set TOPOLOGY so a missing flag cannot run every topology as technical-smoke}"
 export MODEL
+
+if [[ -n "${DIAG_LADDER:-}" ]]; then
+  if [[ -n "${CAMPAIGN:-}" ]]; then
+    echo "DIAG_LADDER cannot be combined with CAMPAIGN; the ladder sets one campaign per cell" >&2
+    exit 1
+  fi
+  if [[ -n "${DIAG_TECH_INTERACTIONS:-}" ]]; then
+    echo "DIAG_LADDER cannot be combined with DIAG_TECH_INTERACTIONS" >&2
+    exit 1
+  fi
+  case "${DIAG_LADDER}" in
+    ab|one-factor) ;;
+    *)
+      echo "DIAG_LADDER must be ab or one-factor" >&2
+      exit 1
+      ;;
+  esac
+  if [[ "${DIAG_LADDER}" == one-factor ]]; then
+    : "${DIAG_DECODE:?set DIAG_DECODE to parse or json_schema after the A/B readout}"
+    if [[ "${DIAG_DECODE}" != parse && "${DIAG_DECODE}" != json_schema ]]; then
+      echo "DIAG_DECODE must be parse or json_schema" >&2
+      exit 1
+    fi
+  fi
+  ARTIFACT_ROOT="${SCRATCH}/runs"
+else
+  CAMPAIGN="${CAMPAIGN:-technical-smoke}"
+  if [[ "${CAMPAIGN}" == diag-ashery-* || "${CAMPAIGN}" == diag-h12-* || "${CAMPAIGN}" == diag-n48-* || "${CAMPAIGN}" == diag-strings-* ]]; then
+    : "${DIAG_N:?set DIAG_N for this diag campaign}"
+    : "${DIAG_H:?set DIAG_H for this diag campaign}"
+    : "${DIAG_POOL:?set DIAG_POOL for this diag campaign}"
+    : "${DIAG_DECODE:?set DIAG_DECODE for this diag campaign}"
+    : "${DIAG_CAP:?set DIAG_CAP for this diag campaign}"
+  fi
+  ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"
+fi
 
 mkdir -p "${ARTIFACT_ROOT}" "$(dirname "${VLLM_LOG}")" "$(dirname "${VENV}")"
 
@@ -116,11 +153,16 @@ defaults = {
     "MAX_MODEL_LEN": str(spec.max_model_len),
     "MAX_NUM_SEQS": str(spec.max_num_seqs),
     "TP": str(spec.tp),
-    "VLLM_EXTRA_ARGS": " ".join(str(part) for part in extra),
 }
 for key, value in defaults.items():
     if not os.environ.get(key):
         print(f"export {key}={shlex.quote(str(value))}")
+# Keep model YAML extras; append operator VLLM_EXTRA_ARGS (do not replace).
+merged = [str(part) for part in extra]
+env_extra = os.environ.get("VLLM_EXTRA_ARGS", "")
+if env_extra.strip():
+    merged.extend(shlex.split(env_extra))
+print(f"export VLLM_EXTRA_ARGS={shlex.quote(' '.join(merged))}")
 PY
 )"
 
@@ -146,7 +188,9 @@ fi
 PORT="$("${PYTHON}" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 export PORT
 export BASE_URL="http://127.0.0.1:${PORT}/v1"
+export VLLM_LOG
 export SERVE_WAIT_TIMEOUT="${SERVE_WAIT_TIMEOUT:-1800}"
+export SERVE_HANG_SECONDS="${SERVE_HANG_SECONDS:-420}"
 
 VLLM_PID=""
 RUNNER_PID=""
@@ -178,6 +222,13 @@ fi
 if [[ " ${VLLM_EXTRA[*]} " != *" --enable-log-requests "* ]]; then
   VLLM_EXTRA+=(--enable-log-requests)
 fi
+# Ampere TP=2: custom all-reduce can hang after CUDA graphs (Gemma 31B).
+if [[ " ${VLLM_EXTRA[*]} " != *" --disable-custom-all-reduce "* ]]; then
+  VLLM_EXTRA+=(--disable-custom-all-reduce)
+fi
+
+echo "NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE} TP=${TP} serve extras: ${VLLM_EXTRA[*]}"
+echo "vLLM log: ${VLLM_LOG}"
 
 "${VLLM_BIN[@]}" serve "${MODEL_ID}" \
   --host 127.0.0.1 \
@@ -190,14 +241,46 @@ fi
   >"${VLLM_LOG}" 2>&1 &
 VLLM_PID=$!
 
-# Wait until /v1/models answers within SERVE_WAIT_TIMEOUT.
+# Wait until /v1/models answers. Abort Ampere TP=2 hangs (shm_broadcast / worker wait, no startup).
 "${PYTHON}" - <<'PY'
-import os, sys, time, urllib.request
+import os, re, sys, time, urllib.request
+
 url = os.environ["BASE_URL"] + "/models"
 timeout = float(os.environ["SERVE_WAIT_TIMEOUT"])
+hang_limit = float(os.environ["SERVE_HANG_SECONDS"])
+log_path = os.environ["VLLM_LOG"]
 deadline = time.time() + timeout
+hang_re = re.compile(
+    r"shm_broadcast|has not responded|hasn't responded|waiting for gpu worker|waiting for engine",
+    re.I,
+)
+startup_re = re.compile(r"application startup complete|uvicorn running", re.I)
+first_hang = None
 last = None
+
+
+def log_text() -> str:
+    try:
+        with open(log_path, encoding="utf-8", errors="replace") as handle:
+            return handle.read()
+    except OSError:
+        return ""
+
+
 while time.time() < deadline:
+    text = log_text()
+    started = bool(startup_re.search(text))
+    if hang_re.search(text) and not started:
+        if first_hang is None:
+            first_hang = time.time()
+        elif time.time() - first_hang >= hang_limit:
+            print(
+                "Ampere TP=2 hang: engine wait / shm_broadcast without startup complete "
+                f"for {int(hang_limit)}s. Do not wait for SERVE_WAIT_TIMEOUT. "
+                "Need NCCL_P2P_DISABLE=1 and --disable-custom-all-reduce on this job.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
     try:
         with urllib.request.urlopen(url, timeout=5) as resp:
             if resp.status < 500:
@@ -209,6 +292,63 @@ while time.time() < deadline:
 print(f"timed out waiting for {url}: {last}", file=sys.stderr)
 sys.exit(1)
 PY
+
+run_counted_slice() {
+  local campaign="$1"
+  export CAMPAIGN="${campaign}"
+  local cell_root="${SCRATCH}/runs/${CAMPAIGN}"
+  mkdir -p "${cell_root}"
+  echo "[diag-ladder] campaign=${CAMPAIGN} N=${DIAG_N:-} H=${DIAG_H:-} pool=${DIAG_POOL:-} decode=${DIAG_DECODE:-} cap=${DIAG_CAP:-}"
+  local runner_args=(
+    "${PYTHON}" run_main.py
+    --model "${MODEL}"
+    --program "${PROGRAM:-emergence}"
+    --artifact-root "${cell_root}"
+    --base-url "${BASE_URL}"
+    --campaign "${CAMPAIGN}"
+  )
+  if [[ -n "${SEED_FROM:-}" ]]; then
+    runner_args+=(--seed-from "${SEED_FROM}")
+  fi
+  runner_args+=(--seed-to "${SEED_TO}")
+  runner_args+=(--topology "${TOPOLOGY}")
+  if [[ -n "${K:-}" ]]; then
+    runner_args+=(--k "${K}")
+  fi
+  "${runner_args[@]}" &
+  RUNNER_PID=$!
+  set +e
+  wait "${RUNNER_PID}"
+  local rc=$?
+  set -e
+  RUNNER_PID=""
+  return "${rc}"
+}
+
+if [[ -n "${DIAG_LADDER:-}" ]]; then
+  export DIAG_CAP="${DIAG_CAP:-400}"
+  ladder_rc=0
+  if [[ "${DIAG_LADDER}" == ab ]]; then
+    export DIAG_N=24 DIAG_H=5 DIAG_POOL=letters
+    export DIAG_DECODE=parse
+    run_counted_slice "diag-ashery-parse-${MODEL}" || ladder_rc=$?
+    export DIAG_DECODE=json_schema
+    run_counted_slice "diag-ashery-schema-${MODEL}" || ladder_rc=$?
+  else
+    decode_tag=parse
+    if [[ "${DIAG_DECODE}" == json_schema ]]; then
+      decode_tag=schema
+    fi
+    export DIAG_N=24 DIAG_H=12 DIAG_POOL=letters
+    run_counted_slice "diag-h12-${decode_tag}-${MODEL}" || ladder_rc=$?
+    export DIAG_N=48 DIAG_H=5 DIAG_POOL=letters
+    run_counted_slice "diag-n48-${decode_tag}-${MODEL}" || ladder_rc=$?
+    export DIAG_N=24 DIAG_H=5 DIAG_POOL=strings
+    run_counted_slice "diag-strings-${decode_tag}-${MODEL}" || ladder_rc=$?
+  fi
+  stop_vllm
+  exit "${ladder_rc}"
+fi
 
 RUNNER_ARGS=(
   "${PYTHON}" run_main.py
