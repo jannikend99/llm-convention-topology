@@ -1,112 +1,196 @@
-# Diag ladder: Ashery mixing, then one-factor steps
+# Diag ladder and path to `pilot-run`
 
-Not confirmatory. Campaign names must start with `diag-`. Counted locks in `config.yaml` stay \(N=48\), \(H=12\), strings, JSON schema. Do not submit `experiment`.
+Not confirmatory. Campaign names for this ladder start with `diag-`. Counted locks in `config.yaml` stay \(N=48\), \(H=12\), strings, JSON schema until a **freeze** (Phase D). Do not submit `experiment` from this file.
 
-Use only if all four tech jobs (`DIAG_TECH_INTERACTIONS=5`) returned HTTP 200 and schema-valid JSON.
+Goal of the path: get **emergence** under JSON schema, keep wall time honest, then use the two A40s fully, then widen topology and Study 2, then time a **`pilot-run`**. `pilot-run` is the last campaign before confirmatory `experiment`.
 
-Yen worktree must be clean (`git status --porcelain` empty) or `run_main.py` exits 2. Submit with `sbatch -G 2`; the script default is `-G 1`. Do not set `CAMPAIGN` when using `DIAG_LADDER` (the job sets one campaign per cell). Do not combine `DIAG_LADDER` with `DIAG_TECH_INTERACTIONS`.
+## Recommended order (why)
 
-The job script always sets `NCCL_P2P_DISABLE=1`, passes it into Apptainer, and appends `--disable-custom-all-reduce`. It prints those extras in the Slurm `.out`. If the vLLM log only repeats engine wait / `shm_broadcast` for 7 minutes with no `startup complete`, the job exits instead of waiting 30 minutes. `scancel` a current tech job that already matches that pattern; resubmit after pull.
+1. **Mixing + JSON schema first.** Without a convention on mixing, lattice/random and committed minorities have nothing to perturb.
+2. **Readout, then freeze knobs.** Do not retune \(H\), \(N\), or the pool after GPU or topology work starts. Otherwise you cannot tell protocol from throughput.
+3. **GPU fill next.** Concurrency (`in_flight_limit`, `max_num_seqs`, concurrent runs) only after the protocol is frozen. Filling a protocol that still changes wastes the fit.
+4. **All five topologies before Study 2.** Mixing, random-regular, lattice, Watts–Strogatz, Barabási–Albert (locked `network.topologies`). Study 2 needs a pre-perturbation gate.
+5. **Study 2 CM size only**, only for models that gated in Study 1.
+6. **`pilot-run` last.** Wall-clock per slice, peak memory, JSON-enum ≥200, same frozen protocol. Then `experiment`.
 
-One Slurm job loads **one model once**, then runs several cells against the same vLLM. GPU cap 4 with `tp: 2`: at most two such jobs run; the rest queue.
+Do not skip to topologies, CM, or `experiment` while Olmo/GLM tech or Phase B is open.
 
-`scancel` stops the **whole job**, including cells that have not started. During Phase 1 parse, do not scancel if you still want schema on that model. Let a dead cell hit cap 400, then the next cell starts. Parse still uses the JSON-enum prompt; A vs B only changes `response_format` and the parser.
+**Wall time:** every `sbatch` in A–B stays **≤ 12 h**. Phase B is one job with all three cells (including \(N=48\)); do not split. Overnight: queue Olmo/GLM Phase A as soon as tech is green, then Phase B for all six.
 
-Before submit, clear leftovers that would fail the job:
+## Six models
 
-```bash
-unset CAMPAIGN DIAG_TECH_INTERACTIONS
-```
+Thinking off, BF16, 2× A40, `tp: 2`. Registry commit `e4cf196`.
 
-## Shared knobs
+| Shorthand | Checkpoint | Role now |
+| --- | --- | --- |
+| `gemma4_31b` | `google/gemma-4-31B-it` | Phase A schema **gated** |
+| `qwen38_27b` | `Qwen/Qwen3.8-27B` | Phase A schema **gated** |
+| `nemotron35_lightning` | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16` | Phase A schema **fragmented** (valid JSON); parse almost gated |
+| `mistral_small32` | `mistralai/Mistral-Small-3.2-24B-Instruct-2506` | Phase A schema **fragmented** (800/800 valid JSON); parse died on the matcher |
+| `olmo31_32b` | `allenai/Olmo-3.1-32B-Instruct` | Tech jobs **593629**; Phase A not started |
+| `glm4_32b` | `zai-org/GLM-4-32B-0414` | Tech jobs **593630**; Phase A not started |
 
-Mixing, emergence, one seed (`SEED_FROM=0`, `SEED_TO=1`), \(T=0.5\), cap **400**. Do not run to 5000. Do not start WS/BA.
+## Phase A — done for the first four; still open for Olmo and GLM
 
-Tendency (when to `scancel` a cell / the job):
+### Tech check
 
-- \(N=24\): at \(t\approx 80\), last50 and trailing-72. If last50 ≤ 10/50 and trailing-72 < 25 → stop that cell.
-- \(t\approx 150\): if still fragmented, stop. Do not wait for 400.
-- Keep to 400 only if last50 is rising or trailing-72 ≥ 40.
-- \(N=48\): gate window is 144 (need ≥137). Same last50 rule at \(t\approx 80\) / 150; do not wait for a full 144-window if last50 is already dead.
+vLLM 0.28.0, 2× A40, `HF_HOME=/scratch/shared/jendress/models`. Green: `POST /v1/chat/completions` **200** and `Received request`. `min_frames` / Triton / `EngineDeadError` on shutdown are noise.
 
-## Phase 1 — A vs B (decode)
+| Shorthand | Job | Note |
+| --- | --- | --- |
+| `nemotron35_lightning` | 593515 | Ampere TP=2 |
+| `gemma4_31b` | 593516 | Ampere TP=2 |
+| `qwen38_27b` | 593588 | prefetch on yen1; GPU nodes have no HF auth |
+| `mistral_small32` | 593591 | mistral tokenizer/config/load; no `chat_template_kwargs` |
+| `olmo31_32b` | 593629 | in flight (2026-09-12) |
+| `glm4_32b` | 593630 | in flight (2026-09-12) |
 
-Ashery-like base: \(N=24\), \(H=5\), letters `Q M X Y F J P R C D`.
+Prefetch: `hf download` (not `huggingface-cli`). Reuse of `diag-tech-*` after a `config.yaml` change → snapshot hash mismatch; new campaign name.
+
+Yen worktree must be clean. `sbatch -G 2`. Do not set `CAMPAIGN` with `DIAG_LADDER`. Do not combine `DIAG_LADDER` with `DIAG_TECH_INTERACTIONS`. Ampere: `NCCL_P2P_DISABLE=1` and `--disable-custom-all-reduce`. GPU cap 4 with `tp: 2`: at most two such jobs at once.
+
+### Phase A decode (Mixing, emergence, seed 0, \(N=24\), \(H=5\), letters, cap 400)
 
 | Cell | Decode | Campaign |
 | --- | --- | --- |
-| A | Parse (no `response_format`; match text to options) | `diag-ashery-parse-<shorthand>` |
-| B | JSON enum `value`/`reason` | `diag-ashery-schema-<shorthand>` |
+| Parse | no `response_format`; match text to options | `diag-ashery-parse-<shorthand>` |
+| Schema | JSON enum `value`/`reason` | `diag-ashery-schema-<shorthand>` |
 
-Models: `nemotron35_lightning`, `gemma4_31b`, `qwen38_27b`, `mistral_small32`.
+First four: **done**. Do not rerun.
 
-Four jobs (not eight). Each job: parse, then schema, same loaded weights.
+Olmo and GLM: one job each, parse then schema on the same load. Start only after tech **200**.
 
 ```bash
 cd /scratch/shared/jendress/exp/llm-convention-topology
 git pull
-git log -1 --oneline
 git status --porcelain
-
 unset CAMPAIGN DIAG_TECH_INTERACTIONS
-
-export PROGRAM=emergence
-export SEED_FROM=0
-export SEED_TO=1
-export TOPOLOGY=mixing
-export DIAG_LADDER=ab
-export DIAG_CAP=400
-export NCCL_P2P_DISABLE=1
-export VLLM_EXTRA_ARGS="--disable-custom-all-reduce"
-
-for MODEL in nemotron35_lightning gemma4_31b qwen38_27b mistral_small32; do
+export PROGRAM=emergence SEED_FROM=0 SEED_TO=1 TOPOLOGY=mixing
+export DIAG_LADDER=ab DIAG_CAP=400
+export NCCL_P2P_DISABLE=1 VLLM_EXTRA_ARGS="--disable-custom-all-reduce" HF_HOME=/scratch/shared/jendress/models
+for MODEL in olmo31_32b glm4_32b; do
   export MODEL
   sbatch -G 2 --mem=64G --export=ALL jobs/thesis_vllm.slurm
 done
 ```
 
-Readout: compare parse vs schema **within** model. Tendency: `H=5` and `W, NEED = 72, 69`.
+Readout: parse vs schema **within** model. Gate window for \(N=24\): need 69/72. Pickles: `/scratch/shared/jendress/runs/<CAMPAIGN>/runs/<shorthand>/mixing/*.pkl`.
 
-Pickle glob: `/scratch/shared/jendress/runs/<CAMPAIGN>/runs/<shorthand>/mixing/*.pkl`
+`scancel` kills the **whole** job (remaining cells too). During Phase A parse, do not scancel if you still want schema on that model.
 
-Do not start Phase 2 until this readout.
+### Early stop vs Ashery time-to-convention
 
-## Phase 2 — one knob at a time
+Abort only if the trajectory is already **comparable in length** to Ashery and still cold. A stop at \(t=80\) is ~7 expected pairings per agent (\(N=24\)) — too short to say the run does not follow Ashery.
 
-Freeze `DIAG_DECODE` per model (`parse` or `json_schema`) from Phase 1. Skip a model if both A and B were dead.
+Ashery (mixing, \(N=24\), \(W=10\), \(H=5\)): most models reach global consensus by **~15 population rounds**. Taking a round as \(N/2\) pairwise games (each agent once in expectation) that is **~180 interactions**. Gemma/Qwen schema gated in that band (\(t=177\)–\(215\)). Cap 400 is ~2× that horizon — enough to call a run slower than Ashery, not a stub.
 
-Three cells, still one load per model:
+Nemotron **parse** took off only after \(t\approx 300\) (last50 = 6 at \(t=150\), 49 at \(t=400\)). A \(t=150\) kill would have dropped a late convention and would not match Ashery’s full rise.
+
+**Do not stop before a full gate window and the Ashery horizon:**
+
+- \(N=24\): no abort before \(t=180\) (except matcher death: zero valid labels, as Mistral parse at \(t=7\)).
+- \(N=48\): no abort before \(t=360\) (15 × \(N/2\)), except matcher death.
+
+After that horizon, schema cells may stop if last50 ≤ 12 **and** last50 is not up versus \(t=180\). Otherwise continue to cap 400.
+
+That way a “dead” label means: we watched an Ashery-length emergence window and still saw no takeoff — not that we cut at a tiny prefix.
+
+## Phase B — one-factor, **JSON schema only**, all six
+
+After Olmo/GLM Phase A readout (schema must at least emit valid JSON; gate is not required — Mistral/Nemotron still go in).
+
+Freeze `DIAG_DECODE=json_schema`. Three cells, one load:
 
 | Cell | Change | Held fixed | Campaign |
 | --- | --- | --- | --- |
-| H | \(H=12\) | \(N=24\), letters, frozen decode | `diag-h12-<parse\|schema>-<shorthand>` |
-| N | \(N=48\) | \(H=5\), letters, frozen decode | `diag-n48-<parse\|schema>-<shorthand>` |
-| Strings | 5-char pool | \(N=24\), \(H=5\), frozen decode | `diag-strings-<parse\|schema>-<shorthand>` |
+| H | \(H=12\) | \(N=24\), letters | `diag-h12-schema-<shorthand>` |
+| N | \(N=48\) | \(H=5\), letters | `diag-n48-schema-<shorthand>` |
+| Strings | 5-char pool | \(N=24\), \(H=5\) | `diag-strings-schema-<shorthand>` |
 
-Same stop rule. For the N=48 cell use last50; trailing window is 144.
-
-Walltime: default script is 12h. Phase 2 is three cells (one is \(N=48\)) → submit `-t 24:00:00`.
+Still Mixing, emergence, seed 0, cap 400. One job, three cells, **12 h**. Do not split the \(N=48\) cell; Phase A schema at 400 interactions was ~1 h after load.
 
 ```bash
 unset CAMPAIGN DIAG_TECH_INTERACTIONS
-
-export PROGRAM=emergence
-export SEED_FROM=0
-export SEED_TO=1
-export TOPOLOGY=mixing
-export DIAG_LADDER=one-factor
-export DIAG_CAP=400
-export NCCL_P2P_DISABLE=1
-export VLLM_EXTRA_ARGS="--disable-custom-all-reduce"
-
-# Example: Gemma parse survived Phase 1. Repeat per living model with that model's decode.
-export MODEL=gemma4_31b
-export DIAG_DECODE=parse
-sbatch -G 2 --mem=64G -t 24:00:00 --export=ALL jobs/thesis_vllm.slurm
+export PROGRAM=emergence SEED_FROM=0 SEED_TO=1 TOPOLOGY=mixing
+export DIAG_LADDER=one-factor DIAG_DECODE=json_schema DIAG_CAP=400
+export NCCL_P2P_DISABLE=1 VLLM_EXTRA_ARGS="--disable-custom-all-reduce"
+export MODEL=<shorthand>
+sbatch -G 2 --mem=64G -t 12:00:00 --export=ALL jobs/thesis_vllm.slurm
 ```
 
-Campaign tag is `schema` when `DIAG_DECODE=json_schema`.
+Queue overnight after Olmo/GLM Phase A. Two jobs at a time (GPU cap).
 
-## Later (not this ladder)
+Do **not** cross parse × H/N/strings here.
 
-Combined knobs (H and N and strings together). Study 2 CM. Confirmatory `experiment`.
+## Extra seeds (repeat Phase A shape, schema only)
+
+After Phase A for Olmo/GLM and after Phase B is queued or done: more `seed_index` values, **JSON schema**, Mixing, \(N=24\), \(H=5\), letters, cap 400. Question: was seed 0 luck?
+
+Do **not** rerun parse×schema × six models. Schema only. Start with **seeds 1–3** (`SEED_FROM=1`, `SEED_TO=4`). One job per model if the runner walks the seed range in ≤ 12 h; otherwise one seed per job.
+
+Priority if the queue is tight: Mistral and Nemotron schema first (n=1 fragmentation), then Gemma/Qwen (gate robustness), then Olmo/GLM if their Phase A schema lived.
+
+## Phase C — readout (no new jobs)
+
+Compare schema cells: base Phase A vs H vs N vs strings.
+
+Decide, per model or jointly:
+
+- Does JSON schema produce a convention?
+- Which one knob (if any) moves last50 / trailing-window?
+- Drop a model only if schema never coordinates **and** Phase B does not help.
+
+Write the freeze in chat and then into `config.yaml`. Do not edit counted YAML during B.
+
+## Phase D — freeze protocol
+
+One JSON-schema recipe for the models that stay. Candidates: keep counted \(N=48\), \(H=12\), strings if Phase B shows they still gate (Gemma/Qwen already gated at Ashery-like \(N=24\), \(H=5\), letters). If only letters + \(H=5\) gates, that is a **lock change** (specs + YAML), not a silent diag default.
+
+Output of D: listed models, \(N\), \(H\), pool, decode=`json_schema`, temperature 0.5. That set is used for E–G and `pilot-run`.
+
+## Phase E — GPU fill (Mixing only, frozen protocol)
+
+Not a hypothesis factor. Measure and raise:
+
+- `in_flight_limit`, `max_num_seqs`
+- concurrent naming-game runs against **one** vLLM (`max_concurrent_runs`, slice length)
+- peak VRAM, tokens/s, time per 400 (or 144-window) interactions
+
+Stay on **2× A40**, `tp: 2`. Do not move counted jobs to H200. Two such jobs are the Yen GPU-cap. The win is a **busy** engine (batch), not a third card.
+
+Stop when GPU util is high and JSON-enum stays valid. Record the numbers in the serve profile. Campaign folder: still `diag-*` or a named fit campaign — **not** `pilot-run` yet if topology/CM are untested.
+
+## Phase F — all topologies (Study 1 shape)
+
+Same frozen protocol, emergence, JSON schema. **All five** locked graphs, one seed first:
+
+`mixing`, `random_regular`, `lattice`, `watts_strogatz`, `barabasi_albert`
+
+Mixing is already known from A–B. Still run it on the freeze so the five share one protocol hash. Then more seeds only on topologies that can still gate.
+
+## Phase G — Study 2 committed-minority size
+
+Only models that passed the Study 1 gate on that topology. Mixing first (human CM benchmark). \(k\) from the locked `k_set`. Placement deferred. Cap/horizon from specs (`phase2_horizon` 1000).
+
+Skip G for a model that never gated in F.
+
+## Phase H — `pilot-run` (last before confirmatory)
+
+Campaign id **`pilot-run`**. Frozen protocol, filled GPU profile, Centola-3 + a small CM smoke if G looked sane.
+
+Measure: JSON-enum ≥200 completions, wall time per slice, peak memory, startup, throughput. Never confirmatory analysis.
+
+After H is green: `experiment` (full \(n=32\) grid). That is **not** this ladder.
+
+## Operator notes
+
+```bash
+unset CAMPAIGN DIAG_TECH_INTERACTIONS
+```
+
+Logs:
+
+```bash
+squeue -u jendress
+tail -F jobs/thesis_vllm_<ID>.out /scratch/shared/jendress/vllm/thesis_<ID>.log
+```
