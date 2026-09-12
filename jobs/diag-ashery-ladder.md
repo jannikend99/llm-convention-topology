@@ -130,6 +130,47 @@ Do **not** rerun parse×schema × six models. Schema only. Start with **seeds 1�
 
 Priority if the queue is tight: Mistral and Nemotron schema first (n=1 fragmentation), then Gemma/Qwen (gate robustness), then Olmo/GLM if their Phase A schema lived.
 
+## Thinking on (queue behind A–B and extra seeds)
+
+Not a freeze knob. Same Ashery-base cell as Phase A schema: Mixing, emergence, seed 0, \(N=24\), \(H=5\), letters, JSON schema, cap 400. Compare to thinking-off schema on the same checkpoint (F25). Do not run parse, Phase B, or the counted \(N=48\) / \(H=12\) / strings cell.
+
+Only pairs that exist:
+
+| Shorthand | Checkpoint | Note |
+| --- | --- | --- |
+| `qwen38_27b_think` | `Qwen/Qwen3.8-27B` | same weights as `qwen38_27b`; `enable_thinking` |
+| `gemma4_31b_think` | `google/gemma-4-31B-it` | same weights as `gemma4_31b`; `enable_thinking` |
+| `nemotron35_lightning_think` | Lightning 30B-A3B BF16 | same weights; `enable_thinking=true`; parser `nemotron_v3` |
+| `olmo31_32b_think` | `allenai/Olmo-3.1-32B-Think` | **other** checkpoint than Instruct; always on; parser `olmo3` |
+
+Mistral Small 3.2 and GLM-4-32B-0414 have no toggle. Magistral / GLM-Z1 are different models; skip them here. Do not add these shorthands to `jobs.models`.
+
+Prefetch Olmo Think on **yen1** before the GPU job (`HF_HOME=/scratch/shared/jendress/models`). Gemma/Qwen/Lightning need no new download.
+
+```bash
+export HF_HOME=/scratch/shared/jendress/models
+hf download allenai/Olmo-3.1-32B-Think
+```
+
+```bash
+cd /scratch/shared/jendress/exp/llm-convention-topology
+git pull
+git status --porcelain
+unset CAMPAIGN DIAG_LADDER DIAG_TECH_INTERACTIONS
+export PROGRAM=emergence SEED_FROM=0 SEED_TO=1 TOPOLOGY=mixing
+export DIAG_N=24 DIAG_H=5 DIAG_POOL=letters DIAG_DECODE=json_schema DIAG_CAP=400
+export NCCL_P2P_DISABLE=1 VLLM_EXTRA_ARGS="--disable-custom-all-reduce"
+export HF_HOME=/scratch/shared/jendress/models
+for MODEL in qwen38_27b_think gemma4_31b_think nemotron35_lightning_think olmo31_32b_think; do
+  export MODEL
+  export CAMPAIGN=diag-ashery-schema-${MODEL}
+  sbatch -G 2 --mem=64G --export=ALL jobs/thesis_vllm.slurm
+done
+unset CAMPAIGN
+```
+
+Submit after the overnight A/B/seed jobs, or they wait in the queue. Do not `scancel` a running A–B job. Registry commit `a947939`. Thinking is slower (`max_tokens` 1024–2048).
+
 ## Phase C — readout (no new jobs)
 
 Compare schema cells: base Phase A vs H vs N vs strings.
