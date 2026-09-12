@@ -132,6 +132,21 @@ class ConfigLockTests(unittest.TestCase):
         self.assertEqual(spec.model_id, "google/gemma-4-E2B-it")
         self.assertNotIn("gemma4_e2b", self.config["jobs"]["models"])
 
+    def test_think_shorthands_are_registry_only(self):
+        lightning = resolve_model(self.config, "nemotron35_lightning_think")
+        self.assertEqual(
+            lightning.model_id,
+            "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+        )
+        self.assertTrue(lightning.thinking)
+        self.assertFalse(lightning.thinking_always_on)
+        olmo = resolve_model(self.config, "olmo31_32b_think")
+        self.assertEqual(olmo.model_id, "allenai/Olmo-3.1-32B-Think")
+        self.assertTrue(olmo.thinking)
+        self.assertTrue(olmo.thinking_always_on)
+        for name in ("nemotron35_lightning_think", "olmo31_32b_think"):
+            self.assertNotIn(name, self.config["jobs"]["models"])
+
     def test_thinking_on_and_off_in_jobs_models_loads(self):
         raw = copy.deepcopy(self.config)
         raw["jobs"]["models"] = ["nemotron35_lightning", "gemma4_31b_think"]

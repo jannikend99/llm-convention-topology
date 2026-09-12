@@ -299,6 +299,56 @@ models:
     seed_indices_per_slice:
       emergence: 8
       cm: 4
+  nemotron35_lightning_think:
+    model_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16
+    revision: placeholder-revision
+    shorthand: nemotron35_lightning_think
+    thinking: true
+    thinking_always_on: false
+    reasoning_effort: null
+    max_tokens: 2048
+    dtype: bfloat16
+    quantization: null
+    gpus: 2
+    tp: 2
+    max_model_len: 8192
+    max_concurrent_runs: 2
+    in_flight_limit: 4
+    max_num_seqs: 8
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+    vllm_extra_args:
+      - --enable-prefix-caching
+      - --async-scheduling
+      - --mamba-backend
+      - flashinfer
+      - --mamba-ssm-cache-dtype
+      - float16
+      - --reasoning-parser
+      - nemotron_v3
+  olmo31_32b_think:
+    model_id: allenai/Olmo-3.1-32B-Think
+    revision: placeholder-revision
+    shorthand: olmo31_32b_think
+    thinking: true
+    thinking_always_on: true
+    reasoning_effort: null
+    max_tokens: 2048
+    dtype: bfloat16
+    quantization: null
+    gpus: 2
+    tp: 2
+    max_model_len: 8192
+    max_concurrent_runs: 2
+    in_flight_limit: 4
+    max_num_seqs: 8
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+    vllm_extra_args:
+      - --reasoning-parser
+      - olmo3
   ministral3_14b:
     model_id: mistralai/Ministral-3-14B-Reasoning-2512
     revision: placeholder-revision
