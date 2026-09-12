@@ -84,10 +84,27 @@ class ConfigLockTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             validate_config(raw)
 
-    def test_default_jobs_models_are_the_four_shorthands(self):
+    def test_default_jobs_models_are_the_six_shorthands(self):
         self.assertEqual(
             self.config["jobs"]["models"],
-            ["nemotron35_lightning", "gemma4_31b", "qwen38_27b", "mistral_small32"],
+            [
+                "nemotron35_lightning",
+                "gemma4_31b",
+                "qwen38_27b",
+                "mistral_small32",
+                "olmo31_32b",
+                "glm4_32b",
+            ],
+        )
+
+    def test_olmo_and_glm_registry_ids(self):
+        self.assertEqual(
+            resolve_model(self.config, "olmo31_32b").model_id,
+            "allenai/Olmo-3.1-32B-Instruct",
+        )
+        self.assertEqual(
+            resolve_model(self.config, "glm4_32b").model_id,
+            "zai-org/GLM-4-32B-0414",
         )
 
     def test_mistral_small32_uses_mistral_tokenizer_flags(self):

@@ -41,7 +41,7 @@ run:
   artifact_root: ""
 
 jobs:
-  models: [nemotron35_lightning, gemma4_31b, qwen38_27b, mistral_small32]
+  models: [nemotron35_lightning, gemma4_31b, qwen38_27b, mistral_small32, olmo31_32b, glm4_32b]
   programs: [emergence, cm]
 
 serve:
@@ -110,6 +110,44 @@ models:
     quantization: null
     gpus: 1
     tp: 1
+    max_model_len: 8192
+    max_concurrent_runs: 4
+    in_flight_limit: 8
+    max_num_seqs: 16
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+  olmo31_32b:
+    model_id: allenai/Olmo-3.1-32B-Instruct
+    revision: placeholder-revision
+    shorthand: olmo31_32b
+    thinking: false
+    thinking_always_on: false
+    reasoning_effort: null
+    max_tokens: 512
+    dtype: bfloat16
+    quantization: null
+    gpus: 2
+    tp: 2
+    max_model_len: 8192
+    max_concurrent_runs: 4
+    in_flight_limit: 8
+    max_num_seqs: 16
+    seed_indices_per_slice:
+      emergence: 8
+      cm: 4
+  glm4_32b:
+    model_id: zai-org/GLM-4-32B-0414
+    revision: placeholder-revision
+    shorthand: glm4_32b
+    thinking: false
+    thinking_always_on: false
+    reasoning_effort: null
+    max_tokens: 512
+    dtype: bfloat16
+    quantization: null
+    gpus: 2
+    tp: 2
     max_model_len: 8192
     max_concurrent_runs: 4
     in_flight_limit: 8
