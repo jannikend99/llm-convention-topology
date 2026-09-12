@@ -141,6 +141,7 @@ def build_client(model_spec: ModelSpec, mock_policy: str, seed: int, options: Se
         reasoning_effort=model_spec.reasoning_effort,
         thinking=model_spec.thinking,
         json_schema=json_schema,
+        send_chat_template_kwargs=model_spec.send_chat_template_kwargs,
     )
 
 

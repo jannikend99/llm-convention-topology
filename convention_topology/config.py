@@ -92,6 +92,7 @@ class ModelSpec:
     max_num_seqs: int
     seed_indices_per_slice: dict[str, int]
     fallback_from: str | None = None
+    send_chat_template_kwargs: bool = True
 
 
 def _plain(obj: Any) -> Any:
@@ -263,6 +264,10 @@ def _validate_models(raw: Mapping[str, Any]) -> None:
             raise ConfigError(f"model {shorthand!r} needs seed_indices_per_slice for both programs")
         if not isinstance(entry.get("thinking"), bool):
             raise ConfigError(f"model {shorthand!r} thinking must be a boolean")
+        if "send_chat_template_kwargs" in entry and not isinstance(
+            entry.get("send_chat_template_kwargs"), bool
+        ):
+            raise ConfigError(f"model {shorthand!r} send_chat_template_kwargs must be a boolean")
         effort = entry.get("reasoning_effort")
         if effort not in (None, "low", "medium", "high"):
             raise ConfigError(f"model {shorthand!r} has invalid reasoning_effort")
@@ -403,6 +408,7 @@ def resolve_model(config: Mapping[str, Any], shorthand: str) -> ModelSpec:
             "cm": int(entry["seed_indices_per_slice"]["cm"]),
         },
         fallback_from=entry.get("fallback_from"),
+        send_chat_template_kwargs=bool(entry.get("send_chat_template_kwargs", True)),
     )
 
 

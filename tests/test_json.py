@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from convention_topology.config import ConfigError, load_config, resolve_model
 from convention_topology.json_output import ParseError, match_option_in_text, parse_decision
-from convention_topology.llm import MockLLMClient, OpenAICompatClient, openai_extra_body
+from convention_topology.llm import MockLLMClient, OpenAICompatClient, chat_completion_kwargs, openai_extra_body
 from convention_topology.prompting import build_user_prompt, format_history
 
 
@@ -106,6 +106,7 @@ class ClientTests(unittest.TestCase):
         client.complete("prompt", options=OPTIONS)
         self.assertNotIn("response_format", captured)
         self.assertEqual(captured["temperature"], 0.5)
+        self.assertIn("extra_body", captured)
 
     def test_schema_mode_sends_response_format(self):
         captured: dict = {}
@@ -149,6 +150,32 @@ class ClientTests(unittest.TestCase):
         with_effort = openai_extra_body(thinking=True, reasoning_effort="medium")
         self.assertTrue(with_effort["chat_template_kwargs"]["enable_thinking"])
         self.assertEqual(with_effort["reasoning_effort"], "medium")
+
+    def test_mistral_omits_chat_template_extra_body(self):
+        kwargs = chat_completion_kwargs(
+            model_id="mistral",
+            prompt="p",
+            temperature=0.5,
+            max_tokens=512,
+            options=OPTIONS,
+            json_schema=True,
+            thinking=False,
+            reasoning_effort=None,
+            send_chat_template_kwargs=False,
+        )
+        self.assertNotIn("extra_body", kwargs)
+        with_kwargs = chat_completion_kwargs(
+            model_id="nemotron",
+            prompt="p",
+            temperature=0.5,
+            max_tokens=512,
+            options=OPTIONS,
+            json_schema=True,
+            thinking=False,
+            reasoning_effort=None,
+            send_chat_template_kwargs=True,
+        )
+        self.assertFalse(with_kwargs["extra_body"]["chat_template_kwargs"]["enable_thinking"])
 
     def test_prompt_is_canonical(self):
         player = {"my_history": [], "partner_history": [], "outcome": []}

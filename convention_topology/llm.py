@@ -50,6 +50,33 @@ def openai_extra_body(*, thinking: bool, reasoning_effort: str | None) -> dict[s
     return extra
 
 
+def chat_completion_kwargs(
+    *,
+    model_id: str,
+    prompt: str,
+    temperature: float,
+    max_tokens: int,
+    options: Sequence[str],
+    json_schema: bool,
+    thinking: bool,
+    reasoning_effort: str | None,
+    send_chat_template_kwargs: bool,
+) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "model": model_id,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if json_schema:
+        kwargs["response_format"] = json_schema_for_options(options)
+    if send_chat_template_kwargs:
+        kwargs["extra_body"] = openai_extra_body(
+            thinking=thinking, reasoning_effort=reasoning_effort
+        )
+    return kwargs
+
+
 def _require_localhost(base_url: str, provider: str) -> None:
     if provider == "mock":
         return
@@ -70,6 +97,7 @@ class OpenAICompatClient:
         reasoning_effort: str | None = None,
         thinking: bool = False,
         json_schema: bool = True,
+        send_chat_template_kwargs: bool = True,
     ):
         _require_localhost(base_url, provider)
         self._client = OpenAI(
@@ -85,18 +113,19 @@ class OpenAICompatClient:
         self.reasoning_effort = reasoning_effort
         self.thinking = thinking
         self.json_schema = json_schema
+        self.send_chat_template_kwargs = send_chat_template_kwargs
 
     def complete(self, prompt: str, *, options: Sequence[str]) -> LLMResponse:
-        kwargs: dict[str, Any] = {
-            "model": self.model_id,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-        }
-        if self.json_schema:
-            kwargs["response_format"] = json_schema_for_options(options)
-        kwargs["extra_body"] = openai_extra_body(
-            thinking=self.thinking, reasoning_effort=self.reasoning_effort
+        kwargs = chat_completion_kwargs(
+            model_id=self.model_id,
+            prompt=prompt,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            options=options,
+            json_schema=self.json_schema,
+            thinking=self.thinking,
+            reasoning_effort=self.reasoning_effort,
+            send_chat_template_kwargs=self.send_chat_template_kwargs,
         )
         response = self._client.chat.completions.create(**kwargs)
         message = response.choices[0].message
@@ -136,6 +165,7 @@ class AsyncOpenAICompatClient:
         reasoning_effort: str | None = None,
         thinking: bool = False,
         json_schema: bool = True,
+        send_chat_template_kwargs: bool = True,
     ):
         _require_localhost(base_url, provider)
         self._client = AsyncOpenAI(
@@ -151,18 +181,19 @@ class AsyncOpenAICompatClient:
         self.reasoning_effort = reasoning_effort
         self.thinking = thinking
         self.json_schema = json_schema
+        self.send_chat_template_kwargs = send_chat_template_kwargs
 
     async def complete(self, prompt: str, *, options: Sequence[str]) -> LLMResponse:
-        kwargs: dict[str, Any] = {
-            "model": self.model_id,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-        }
-        if self.json_schema:
-            kwargs["response_format"] = json_schema_for_options(options)
-        kwargs["extra_body"] = openai_extra_body(
-            thinking=self.thinking, reasoning_effort=self.reasoning_effort
+        kwargs = chat_completion_kwargs(
+            model_id=self.model_id,
+            prompt=prompt,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            options=options,
+            json_schema=self.json_schema,
+            thinking=self.thinking,
+            reasoning_effort=self.reasoning_effort,
+            send_chat_template_kwargs=self.send_chat_template_kwargs,
         )
         response = await self._client.chat.completions.create(**kwargs)
         message = response.choices[0].message
@@ -270,3 +301,12 @@ def classify_error(exc: BaseException) -> str:
     if "truncat" in message:
         return "truncated"
     return "schema"
+
+
+def error_raw(exc: BaseException) -> str:
+    if isinstance(exc, ParseError):
+        return ""
+    body = getattr(exc, "body", None)
+    if body is not None:
+        return str(body)[:4000]
+    return str(exc)[:4000]

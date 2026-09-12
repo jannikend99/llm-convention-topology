@@ -155,6 +155,17 @@ models:
     seed_indices_per_slice:
       emergence: 8
       cm: 4
+    # Pixtral OpenAI route: HF tokenizer + chat_template_kwargs → HTTP 400 (tech 593589).
+    send_chat_template_kwargs: false
+    vllm_extra_args:
+      - --tokenizer-mode
+      - mistral
+      - --config-format
+      - mistral
+      - --load-format
+      - mistral
+      - --generation-config
+      - vllm
   mistral_small4:
     model_id: mistralai/Mistral-Small-4-119B-2603
     revision: placeholder-revision

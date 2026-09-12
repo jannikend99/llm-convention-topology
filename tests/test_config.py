@@ -90,6 +90,26 @@ class ConfigLockTests(unittest.TestCase):
             ["nemotron35_lightning", "gemma4_31b", "qwen38_27b", "mistral_small32"],
         )
 
+    def test_mistral_small32_uses_mistral_tokenizer_flags(self):
+        extra = self.config["models"]["mistral_small32"].get("vllm_extra_args") or []
+        self.assertEqual(
+            extra,
+            [
+                "--tokenizer-mode",
+                "mistral",
+                "--config-format",
+                "mistral",
+                "--load-format",
+                "mistral",
+                "--generation-config",
+                "vllm",
+            ],
+        )
+        spec = resolve_model(self.config, "mistral_small32")
+        self.assertFalse(spec.send_chat_template_kwargs)
+        nemo = resolve_model(self.config, "nemotron35_lightning")
+        self.assertTrue(nemo.send_chat_template_kwargs)
+
     def test_gemma4_e2b_is_registry_only(self):
         spec = resolve_model(self.config, "gemma4_e2b")
         self.assertEqual(spec.model_id, "google/gemma-4-E2B-it")

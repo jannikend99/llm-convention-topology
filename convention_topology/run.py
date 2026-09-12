@@ -25,6 +25,7 @@ from convention_topology.llm import (
     AsyncLLMClient,
     RunFailedError,
     classify_error,
+    error_raw,
 )
 from convention_topology.networks import adjacency_hash, get_interaction_network, graph_stats
 from convention_topology.persistence import (
@@ -580,9 +581,7 @@ async def _decision(
             error_class = classify_error(exc)
             consuming += 1
             state.n_retries += 1
-            raw = getattr(getattr(exc, "response", None), "text", "") if False else str(getattr(exc, "text", "") or "")
-            if isinstance(exc, ParseError) and hasattr(exc, "args"):
-                raw = ""
+            raw = error_raw(exc)
             row = _attempt_row(
                 cfg, run_id, decision_id, t, agent_id, partner_id, attempt_index, option_order,
                 schema_valid=False, error_class=error_class, raw=raw, enum_label=None, reason=None,
