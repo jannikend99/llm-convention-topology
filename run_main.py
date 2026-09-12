@@ -10,6 +10,7 @@ from pathlib import Path
 
 from convention_topology.config import (
     apply_diag_protocol,
+    apply_diag_tech_interactions,
     apply_serve_base_url,
     check_campaign_name,
     load_config,
@@ -55,6 +56,9 @@ def main(argv: list[str] | None = None) -> int:
             pool_kind=str(diag_pool),
             cap_phase1=int(diag_cap) if diag_cap else 1200,
         )
+    tech_n = os.environ.get("DIAG_TECH_INTERACTIONS")
+    if tech_n:
+        apply_diag_tech_interactions(config, int(tech_n))
     if args.print_jobs:
         for job in print_jobs(config, program=args.program):
             print(format_job_line(job))

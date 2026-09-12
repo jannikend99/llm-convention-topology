@@ -326,6 +326,19 @@ def apply_diag_protocol(
     return config
 
 
+def apply_diag_tech_interactions(config: dict[str, Any], n_interactions: int) -> dict[str, Any]:
+    """Stop after a few pairings so a serve smoke does not run the gate/cap."""
+    campaign = str(config["run"]["campaign"])
+    if not campaign.startswith("diag-"):
+        raise ConfigError("diag tech interactions require a campaign name starting with diag-")
+    n = int(n_interactions)
+    if n < 1 or n > 20:
+        raise ConfigError("diag tech interactions must be between 1 and 20")
+    config["protocol"]["cap_phase1"] = n
+    return config
+
+
+
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
     config_path = Path(path) if path is not None else DEFAULT_CONFIG_PATH
     with config_path.open("r", encoding="utf-8") as handle:

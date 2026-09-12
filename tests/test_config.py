@@ -14,6 +14,7 @@ from convention_topology.config import (
     SERVE_PROFILE_KEYS,
     TOPOLOGIES,
     apply_diag_protocol,
+    apply_diag_tech_interactions,
     apply_serve_base_url,
     load_config,
     protocol_fingerprint,
@@ -191,6 +192,12 @@ class BannedConfigTests(unittest.TestCase):
         self.assertEqual(raw["pool"]["labels"], list(DIAG_LETTER_POOL))
         self.assertEqual(raw["protocol"]["N"], 48)
         self.assertEqual(raw["protocol"]["gate_window"], 144)
+
+    def test_diag_tech_interactions_allows_tiny_cap(self):
+        raw = self._raw()
+        raw["run"]["campaign"] = "diag-tech-gemma4-31b"
+        apply_diag_tech_interactions(raw, 5)
+        self.assertEqual(raw["protocol"]["cap_phase1"], 5)
 
     def test_diag_protocol_strings_keeps_five_char_generator(self):
         raw = self._raw()
