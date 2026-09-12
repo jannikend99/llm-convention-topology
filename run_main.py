@@ -47,7 +47,9 @@ def main(argv: list[str] | None = None) -> int:
     diag_h = os.environ.get("DIAG_H")
     diag_pool = os.environ.get("DIAG_POOL")
     diag_cap = os.environ.get("DIAG_CAP")
-    if diag_h or diag_pool or diag_cap:
+    diag_n = os.environ.get("DIAG_N")
+    diag_decode = os.environ.get("DIAG_DECODE")
+    if diag_h or diag_pool or diag_cap or diag_n or diag_decode:
         if not diag_h or not diag_pool:
             parser.error("DIAG_H and DIAG_POOL must be set together")
         apply_diag_protocol(
@@ -55,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
             memory_h=int(diag_h),
             pool_kind=str(diag_pool),
             cap_phase1=int(diag_cap) if diag_cap else 1200,
+            population_n=int(diag_n) if diag_n else None,
+            decode=str(diag_decode) if diag_decode else None,
         )
     tech_n = os.environ.get("DIAG_TECH_INTERACTIONS")
     if tech_n:

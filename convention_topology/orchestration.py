@@ -124,7 +124,7 @@ def cell_grid(
     return rows
 
 
-def build_client(model_spec: ModelSpec, mock_policy: str, seed: int, options: Sequence[str]):
+def build_client(model_spec: ModelSpec, mock_policy: str, seed: int, options: Sequence[str], *, json_schema: bool = True):
     if model_spec.provider == "mock" or model_spec.shorthand == "mock":
         import random
 
@@ -140,6 +140,7 @@ def build_client(model_spec: ModelSpec, mock_policy: str, seed: int, options: Se
         provider=model_spec.provider,
         reasoning_effort=model_spec.reasoning_effort,
         thinking=model_spec.thinking,
+        json_schema=json_schema,
     )
 
 
@@ -196,7 +197,14 @@ async def run_slice_async(
                 if meta.get("run_status") in {"completed", "censored", "failed"}:
                     return meta["run_status"]
             options = options_for_program(files["pool"]["labels"], program)
-            client = build_client(model_spec, mock_policy, cfg.model_seed, options)
+            decode = str(config["protocol"].get("diag_decode") or "json_schema")
+            client = build_client(
+                model_spec,
+                mock_policy,
+                cfg.model_seed,
+                options,
+                json_schema=decode == "json_schema",
+            )
             try:
                 await execute_run_async(cfg, client, campaign_dir=campaign_dir, limiter=limiter, install_sigterm=True)
                 return read_meta(paths.meta_path)["run_status"]

@@ -296,14 +296,19 @@ def check_campaign_name(name: str) -> str:
 DIAG_LETTER_POOL = ("Q", "M", "X", "Y", "F", "J", "P", "R", "C", "D")
 
 
+DIAG_DECODE_VALUES = ("json_schema", "parse")
+
+
 def apply_diag_protocol(
     config: dict[str, Any],
     *,
     memory_h: int,
     pool_kind: str,
     cap_phase1: int | None = None,
+    population_n: int | None = None,
+    decode: str | None = None,
 ) -> dict[str, Any]:
-    """Override H / pool after validate_config. Counted defaults stay locked."""
+    """Override H / pool / N / decode after validate_config. Counted defaults stay locked."""
     campaign = str(config["run"]["campaign"])
     if not campaign.startswith("diag-"):
         raise ConfigError("diag protocol overrides require a campaign name starting with diag-")
@@ -312,6 +317,17 @@ def apply_diag_protocol(
     if pool_kind not in ("strings", "letters"):
         raise ConfigError("diag pool_kind must be strings or letters")
     config["protocol"]["H"] = int(memory_h)
+    if population_n is not None:
+        n = int(population_n)
+        if n not in (24, 48):
+            raise ConfigError("diag population_n must be 24 or 48")
+        config["protocol"]["N"] = n
+        config["protocol"]["gate_window"] = 3 * n
+    if decode is not None:
+        kind = str(decode)
+        if kind not in DIAG_DECODE_VALUES:
+            raise ConfigError("diag decode must be json_schema or parse")
+        config["protocol"]["diag_decode"] = kind
     if cap_phase1 is not None:
         cap = int(cap_phase1)
         if cap < int(LOCK_PROTOCOL["gate_window"]) or cap > int(LOCK_PROTOCOL["cap_phase1"]):

@@ -19,7 +19,7 @@ import httpx
 
 from convention_topology.config import ModelSpec, config_hash, protocol_fingerprint
 from convention_topology.gate import evaluate_phase1_gate, has_tracker_converged
-from convention_topology.json_output import ParseError, parse_decision
+from convention_topology.json_output import ParseError, match_option_in_text, parse_decision
 from convention_topology.llm import (
     AsyncClientAdapter,
     AsyncLLMClient,
@@ -125,6 +125,8 @@ class RunConfig:
     rewards: Sequence[int] = (-50, 100)
     memory_size: int = 12
     n: int = 48
+    string_length: int = 5
+    json_schema: bool = True
     cm_k: int | None = None
     incumbent_index: int = 0
     gate_window: int = 144
@@ -247,6 +249,8 @@ def build_run_config(
         rewards=(int(protocol["rewards_mismatch"]), int(protocol["rewards_match"])),
         memory_size=int(protocol["H"]),
         n=int(protocol["N"]),
+        string_length=int(protocol["string_length"]),
+        json_schema=str(protocol.get("diag_decode") or "json_schema") == "json_schema",
         cm_k=cm_k,
         incumbent_index=0,
         gate_window=3 * int(protocol["N"]),
@@ -362,7 +366,7 @@ def _sidecar(cfg: RunConfig, run_id: str, run_key: dict, state: RunState, *, sta
             "N": cfg.n,
             "H": cfg.memory_size,
             "W": W,
-            "string_length": 5,
+            "string_length": cfg.string_length,
             "edge_count": stats["edge_count"],
             "realized_mean_degree": stats["realized_mean_degree"],
             "nominal_degree": cfg.n - 1 if topology == "mixing" else 4,
@@ -387,8 +391,8 @@ def _sidecar(cfg: RunConfig, run_id: str, run_key: dict, state: RunState, *, sta
             "max_tokens": cfg.max_tokens,
             "top_p": None,
             "top_k": None,
-            "json_schema": True,
-            "response_format": "json_schema",
+            "json_schema": cfg.json_schema,
+            "response_format": "json_schema" if cfg.json_schema else "option_match",
             "label_pool": list(cfg.label_pool),
             "pool_seed": cfg.pool_seed,
             "pool_sha256": cfg.pool_sha256,
@@ -552,7 +556,11 @@ async def _decision(
             t_end = default_now()
             state.n_api_calls += 1
             state.wait_on_model_ms += duration_ms
-            value, reason = parse_decision(response.text, options)
+            value, reason = (
+                parse_decision(response.text, options)
+                if cfg.json_schema
+                else match_option_in_text(response.text, options)
+            )
             row = _attempt_row(
                 cfg, run_id, decision_id, t, agent_id, partner_id, attempt_index, option_order,
                 schema_valid=True, error_class=None, raw=response.text, enum_label=value, reason=reason,
@@ -628,7 +636,9 @@ def _attempt_row(
         "raw_response_text": kwargs.get("raw"),
         "reasoning": kwargs.get("reasoning"),
         "option_order": list(option_order),
-        "parse_method": "json_schema" if kwargs["schema_valid"] else "fail",
+        "parse_method": (
+            "json_schema" if kwargs["schema_valid"] and cfg.json_schema else "option_match" if kwargs["schema_valid"] else "fail"
+        ),
         "prompt_sha256": kwargs.get("prompt_sha256"),
         "temperature": cfg.temperature,
         "max_tokens": cfg.max_tokens,

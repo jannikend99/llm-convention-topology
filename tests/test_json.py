@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from convention_topology.config import ConfigError, load_config, resolve_model
-from convention_topology.json_output import ParseError, parse_decision
+from convention_topology.json_output import ParseError, match_option_in_text, parse_decision
 from convention_topology.llm import MockLLMClient, OpenAICompatClient, openai_extra_body
 from convention_topology.prompting import build_user_prompt, format_history
 
@@ -39,6 +39,22 @@ class JsonEnumTests(unittest.TestCase):
         value, _reason = parse_decision(response.text, OPTIONS)
         self.assertEqual(value, "aaaaa")
         self.assertNotIn(";", response.text)
+
+
+class OptionMatchTests(unittest.TestCase):
+    def test_unique_letter(self):
+        value, reason = match_option_in_text("I pick Q this round.", ["Q", "M", "X"])
+        self.assertEqual(value, "Q")
+        self.assertIn("Q", reason)
+
+    def test_rejects_several_letters(self):
+        with self.assertRaises(ParseError):
+            match_option_in_text("Q or M", ["Q", "M"])
+
+    def test_still_accepts_strict_json(self):
+        text = json.dumps({"value": "Q", "reason": "ok"})
+        value, _reason = match_option_in_text(text, ["Q", "M"])
+        self.assertEqual(value, "Q")
 
 
 class ClientTests(unittest.TestCase):

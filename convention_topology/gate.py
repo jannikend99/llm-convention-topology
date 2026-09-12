@@ -1,14 +1,20 @@
-"""Study 1 integer gate: first t>=144 with at least 137 successes in the trailing 144."""
+"""Study 1 integer gate: first t>=window with at least ceil(0.95*window) trailing successes."""
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 
 GATE_WINDOW = 144
-MIN_SUCCESSES = 137
+GATE_THRESHOLD = 0.95
+MIN_SUCCESSES = 137  # ceil(0.95 * 144); locked counted window
 CAP_PHASE1 = 5000
+
+
+def min_gate_successes(window: int) -> int:
+    return int(math.ceil(GATE_THRESHOLD * int(window)))
 
 
 @dataclass(frozen=True)
@@ -30,14 +36,15 @@ def has_tracker_converged(tracker: Mapping[str, Sequence[int]], *, window: int =
     outcomes = tracker["outcome"]
     if len(outcomes) < window:
         return False
-    return int(sum(outcomes[-window:])) >= MIN_SUCCESSES
+    return int(sum(outcomes[-window:])) >= min_gate_successes(window)
 
 
 def first_gate_time(outcomes: Sequence[int], *, window: int = GATE_WINDOW) -> int | None:
     if len(outcomes) < window:
         return None
+    need = min_gate_successes(window)
     for t in range(window, len(outcomes) + 1):
-        if int(sum(outcomes[t - window : t])) >= MIN_SUCCESSES:
+        if int(sum(outcomes[t - window : t])) >= need:
             return t
     return None
 

@@ -69,6 +69,7 @@ class OpenAICompatClient:
         provider: str = "openai_compat",
         reasoning_effort: str | None = None,
         thinking: bool = False,
+        json_schema: bool = True,
     ):
         _require_localhost(base_url, provider)
         self._client = OpenAI(
@@ -83,6 +84,7 @@ class OpenAICompatClient:
         self.base_url = base_url
         self.reasoning_effort = reasoning_effort
         self.thinking = thinking
+        self.json_schema = json_schema
 
     def complete(self, prompt: str, *, options: Sequence[str]) -> LLMResponse:
         kwargs: dict[str, Any] = {
@@ -90,8 +92,9 @@ class OpenAICompatClient:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "response_format": json_schema_for_options(options),
         }
+        if self.json_schema:
+            kwargs["response_format"] = json_schema_for_options(options)
         kwargs["extra_body"] = openai_extra_body(
             thinking=self.thinking, reasoning_effort=self.reasoning_effort
         )
@@ -132,6 +135,7 @@ class AsyncOpenAICompatClient:
         provider: str = "openai_compat",
         reasoning_effort: str | None = None,
         thinking: bool = False,
+        json_schema: bool = True,
     ):
         _require_localhost(base_url, provider)
         self._client = AsyncOpenAI(
@@ -146,6 +150,7 @@ class AsyncOpenAICompatClient:
         self.base_url = base_url
         self.reasoning_effort = reasoning_effort
         self.thinking = thinking
+        self.json_schema = json_schema
 
     async def complete(self, prompt: str, *, options: Sequence[str]) -> LLMResponse:
         kwargs: dict[str, Any] = {
@@ -153,8 +158,9 @@ class AsyncOpenAICompatClient:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "response_format": json_schema_for_options(options),
         }
+        if self.json_schema:
+            kwargs["response_format"] = json_schema_for_options(options)
         kwargs["extra_body"] = openai_extra_body(
             thinking=self.thinking, reasoning_effort=self.reasoning_effort
         )

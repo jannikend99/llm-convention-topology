@@ -70,3 +70,6 @@ class ProtocolIdentityTests(unittest.TestCase):
         self.assertEqual(MIN_SUCCESSES, 137)
         late = [0] * 10 + [1] * 137
         self.assertEqual(first_gate_time(late), 147)
+        short = [1] * 69 + [0] * 3
+        self.assertTrue(has_tracker_converged({"outcome": short}, window=72))
+        self.assertFalse(has_tracker_converged({"outcome": [1] * 68 + [0] * 4}, window=72))

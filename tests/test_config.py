@@ -193,6 +193,23 @@ class BannedConfigTests(unittest.TestCase):
         self.assertEqual(raw["protocol"]["N"], 48)
         self.assertEqual(raw["protocol"]["gate_window"], 144)
 
+    def test_diag_ashery_n24_letters_parse(self):
+        raw = self._raw()
+        raw["run"]["campaign"] = "diag-ashery-parse-mock"
+        apply_diag_protocol(
+            raw,
+            memory_h=5,
+            pool_kind="letters",
+            cap_phase1=400,
+            population_n=24,
+            decode="parse",
+        )
+        self.assertEqual(raw["protocol"]["N"], 24)
+        self.assertEqual(raw["protocol"]["H"], 5)
+        self.assertEqual(raw["protocol"]["gate_window"], 72)
+        self.assertEqual(raw["protocol"]["diag_decode"], "parse")
+        self.assertEqual(raw["protocol"]["string_length"], 1)
+
     def test_diag_tech_interactions_allows_tiny_cap(self):
         raw = self._raw()
         raw["run"]["campaign"] = "diag-tech-gemma4-31b"

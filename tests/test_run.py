@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from convention_topology.campaign import ensure_campaign_files
-from convention_topology.config import load_config, resolve_model
+from convention_topology.config import apply_diag_protocol, load_config, resolve_model
 from convention_topology.json_output import ParseError
 from convention_topology.llm import MockLLMClient, RunFailedError
 from convention_topology.persistence import SIDECAR_FIELDS, read_events, read_meta, run_paths
@@ -214,6 +214,57 @@ class RecordingTests(unittest.TestCase):
             if meta["run_status"] == "completed":
                 self.assertGreaterEqual(meta["t_gate"], 144)
                 self.assertTrue(meta["gate_passed"])
+
+    def test_diag_option_match_letter_run(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = load_config()
+            config["run"]["campaign"] = "diag-ashery-parse-mock"
+            apply_diag_protocol(
+                config,
+                memory_h=5,
+                pool_kind="letters",
+                cap_phase1=400,
+                population_n=24,
+                decode="parse",
+            )
+            files = ensure_campaign_files(root, config)
+            spec = resolve_model(config, "mock")
+            cfg = build_run_config(
+                config,
+                spec,
+                program=PROGRAM_EMERGENCE,
+                topology="mixing",
+                seed_index=0,
+                cm_k=None,
+                pool_labels=files["pool"]["labels"],
+                pool_sha256=files["pool"]["sha256"],
+                code_commit="test",
+                artifact_root=str(root),
+            )
+            cfg.max_phase1_interactions = 1
+            self.assertEqual(cfg.n, 24)
+            self.assertEqual(cfg.gate_window, 72)
+            self.assertFalse(cfg.json_schema)
+            self.assertEqual(cfg.options[0], "Q")
+            client = MockLLMClient(
+                policy="scripted",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                scripted_responses=["I choose Q.", "Player uses Q."],
+            )
+            paths = execute_run(cfg, client, campaign_dir=root)
+            meta = read_meta(paths.meta_path)
+            self.assertEqual(meta["N"], 24)
+            self.assertEqual(meta["H"], 5)
+            self.assertEqual(meta["response_format"], "option_match")
+            self.assertFalse(meta["json_schema"])
+            self.assertEqual(meta["n_interactions"], 1)
+            events = read_events(paths.events_path)
+            attempts = [row for row in events if row["record_type"] == "llm_attempt"]
+            self.assertEqual(len(attempts), 2)
+            self.assertTrue(all(row["parse_method"] == "option_match" for row in attempts))
+            self.assertEqual({row["enum_label"] for row in attempts}, {"Q"})
 
 
 async def _instant(_delay):
