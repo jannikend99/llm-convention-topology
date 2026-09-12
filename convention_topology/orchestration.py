@@ -15,7 +15,12 @@ from convention_topology.config import (
     resolve_model,
 )
 from convention_topology.git_guard import current_commit, require_clean_worktree
-from convention_topology.llm import AsyncClientAdapter, AsyncOpenAICompatClient, MockLLMClient
+from convention_topology.llm import (
+    AsyncClientAdapter,
+    AsyncOpenAICompatClient,
+    MockLLMClient,
+    request_timeout,
+)
 from convention_topology.persistence import build_run_id, encode_run_key, read_meta, run_paths
 from convention_topology.pool import options_for_program
 from convention_topology.run import (
@@ -137,11 +142,13 @@ def build_client(model_spec: ModelSpec, mock_policy: str, seed: int, options: Se
         api_key=model_spec.api_key,
         temperature=model_spec.temperature,
         max_tokens=model_spec.max_tokens,
+        timeout=request_timeout(thinking=model_spec.thinking),
         provider=model_spec.provider,
         reasoning_effort=model_spec.reasoning_effort,
         thinking=model_spec.thinking,
         json_schema=json_schema,
         send_chat_template_kwargs=model_spec.send_chat_template_kwargs,
+        thinking_token_budget=model_spec.thinking_token_budget,
     )
 
 

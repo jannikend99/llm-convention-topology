@@ -306,7 +306,8 @@ models:
     thinking: true
     thinking_always_on: false
     reasoning_effort: null
-    max_tokens: 2048
+    max_tokens: 4096
+    thinking_token_budget: 2048
     dtype: bfloat16
     quantization: null
     gpus: 2
@@ -334,7 +335,8 @@ models:
     thinking: true
     thinking_always_on: true
     reasoning_effort: null
-    max_tokens: 2048
+    max_tokens: 4096
+    thinking_token_budget: 2048
     dtype: bfloat16
     quantization: null
     gpus: 2

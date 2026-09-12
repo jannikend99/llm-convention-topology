@@ -150,6 +150,17 @@ class ClientTests(unittest.TestCase):
         with_effort = openai_extra_body(thinking=True, reasoning_effort="medium")
         self.assertTrue(with_effort["chat_template_kwargs"]["enable_thinking"])
         self.assertEqual(with_effort["reasoning_effort"], "medium")
+        self.assertNotIn("thinking_token_budget", extra)
+        with_budget = openai_extra_body(
+            thinking=True, reasoning_effort=None, thinking_token_budget=2048
+        )
+        self.assertEqual(with_budget["thinking_token_budget"], 2048)
+
+    def test_thinking_client_uses_longer_timeout(self):
+        off = OpenAICompatClient(base_url="http://127.0.0.1:9/v1", model_id="x")
+        on = OpenAICompatClient(base_url="http://127.0.0.1:9/v1", model_id="x", thinking=True)
+        self.assertEqual(off.timeout, 120.0)
+        self.assertEqual(on.timeout, 300.0)
 
     def test_mistral_omits_chat_template_extra_body(self):
         kwargs = chat_completion_kwargs(

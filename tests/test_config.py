@@ -140,10 +140,17 @@ class ConfigLockTests(unittest.TestCase):
         )
         self.assertTrue(lightning.thinking)
         self.assertFalse(lightning.thinking_always_on)
+        self.assertEqual(lightning.max_tokens, 4096)
+        self.assertEqual(lightning.thinking_token_budget, 2048)
         olmo = resolve_model(self.config, "olmo31_32b_think")
         self.assertEqual(olmo.model_id, "allenai/Olmo-3.1-32B-Think")
         self.assertTrue(olmo.thinking)
         self.assertTrue(olmo.thinking_always_on)
+        self.assertEqual(olmo.max_tokens, 4096)
+        self.assertEqual(olmo.thinking_token_budget, 2048)
+        gemma = resolve_model(self.config, "gemma4_31b_think")
+        self.assertIsNone(gemma.thinking_token_budget)
+        self.assertEqual(gemma.max_tokens, 1024)
         for name in ("nemotron35_lightning_think", "olmo31_32b_think"):
             self.assertNotIn(name, self.config["jobs"]["models"])
 
@@ -153,6 +160,16 @@ class ConfigLockTests(unittest.TestCase):
         validated = validate_config(raw)
         self.assertFalse(validated["models"]["nemotron35_lightning"]["thinking"])
         self.assertTrue(validated["models"]["gemma4_31b_think"]["thinking"])
+
+    def test_rejects_thinking_token_budget_without_room(self):
+        raw = copy.deepcopy(self.config)
+        raw["models"]["nemotron35_lightning"]["thinking_token_budget"] = 256
+        with self.assertRaises(ConfigError):
+            validate_config(raw)
+        raw = copy.deepcopy(self.config)
+        raw["models"]["nemotron35_lightning_think"]["thinking_token_budget"] = 4096
+        with self.assertRaises(ConfigError):
+            validate_config(raw)
 
     def test_rejects_slate_model_key(self):
         raw = copy.deepcopy(self.config)

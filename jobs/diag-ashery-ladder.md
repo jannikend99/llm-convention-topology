@@ -147,29 +147,38 @@ Mistral Small 3.2 and GLM-4-32B-0414 have no toggle. Magistral / GLM-Z1 are diff
 
 Prefetch Olmo Think on **yen1** before the GPU job (`HF_HOME=/scratch/shared/jendress/models`). Gemma/Qwen/Lightning need no new download.
 
-```bash
-export HF_HOME=/scratch/shared/jendress/models
-hf download allenai/Olmo-3.1-32B-Think
-```
+Thinking is slower. Lightning Think and Olmo Think previously died on empty JSON / client timeout (120 s). Rerun those two only, with a **new** campaign name (config snapshot changed: `max_tokens` 4096, `thinking_token_budget` 2048, client timeout 300 s when `thinking`). Do not reuse `diag-ashery-schema-nemotron35_lightning_think` or `diag-ashery-schema-olmo31_32b_think`. Gemma Think and Qwen Think already gated; do not rerun.
 
 ```bash
 cd /scratch/shared/jendress/exp/llm-convention-topology
 git pull
+git log -1 --oneline
 git status --porcelain
+# worktree must be empty. If graphify-out/ is untracked: rm -rf graphify-out
+
 unset CAMPAIGN DIAG_LADDER DIAG_TECH_INTERACTIONS
 export PROGRAM=emergence SEED_FROM=0 SEED_TO=1 TOPOLOGY=mixing
 export DIAG_N=24 DIAG_H=5 DIAG_POOL=letters DIAG_DECODE=json_schema DIAG_CAP=400
 export NCCL_P2P_DISABLE=1 VLLM_EXTRA_ARGS="--disable-custom-all-reduce"
 export HF_HOME=/scratch/shared/jendress/models
-for MODEL in qwen38_27b_think gemma4_31b_think nemotron35_lightning_think olmo31_32b_think; do
-  export MODEL
-  export CAMPAIGN=diag-ashery-schema-${MODEL}
-  sbatch -G 2 --mem=64G --export=ALL jobs/thesis_vllm.slurm
-done
+
+export MODEL=nemotron35_lightning_think
+export CAMPAIGN=diag-ashery-schema-tok-nemotron35_lightning_think
+sbatch -G 2 --mem=64G --export=ALL jobs/thesis_vllm.slurm
+
+export MODEL=olmo31_32b_think
+export CAMPAIGN=diag-ashery-schema-tok-olmo31_32b_think
+sbatch -G 2 --mem=64G --export=ALL jobs/thesis_vllm.slurm
+
 unset CAMPAIGN
 ```
 
-Submit after the overnight A/B/seed jobs, or they wait in the queue. Do not `scancel` a running A–B job. Registry commit `a947939`. Thinking is slower (`max_tokens` 1024–2048).
+Submit two jobs only if two GPU slots are free (Yen cap 4 GPUs, `tp: 2`). Do not `scancel` running A–B/seed jobs. Olmo Think weights should already be in `HF_HOME`; Lightning uses the instruct weights. Registry + timeout/budget live in the commit that adds `thinking_token_budget`.
+
+```bash
+export HF_HOME=/scratch/shared/jendress/models
+hf download allenai/Olmo-3.1-32B-Think
+```
 
 ## Phase C — readout (no new jobs)
 

@@ -93,6 +93,7 @@ class ModelSpec:
     seed_indices_per_slice: dict[str, int]
     fallback_from: str | None = None
     send_chat_template_kwargs: bool = True
+    thinking_token_budget: int | None = None
 
 
 def _plain(obj: Any) -> Any:
@@ -273,6 +274,14 @@ def _validate_models(raw: Mapping[str, Any]) -> None:
             raise ConfigError(f"model {shorthand!r} has invalid reasoning_effort")
         if effort == "high" and not entry.get("thinking_always_on"):
             raise ConfigError("reasoning_effort high is not allowed when none vs high is the only control")
+        budget = entry.get("thinking_token_budget")
+        if budget is not None:
+            if not entry.get("thinking"):
+                raise ConfigError(f"model {shorthand!r} thinking_token_budget requires thinking")
+            if not isinstance(budget, int) or isinstance(budget, bool) or budget <= 0:
+                raise ConfigError(f"model {shorthand!r} thinking_token_budget must be a positive int")
+            if budget >= int(entry["max_tokens"]):
+                raise ConfigError(f"model {shorthand!r} thinking_token_budget must be below max_tokens")
     for name in job_models:
         if name not in models:
             raise ConfigError(f"jobs.models lists unknown shorthand {name!r}")
@@ -409,6 +418,7 @@ def resolve_model(config: Mapping[str, Any], shorthand: str) -> ModelSpec:
         },
         fallback_from=entry.get("fallback_from"),
         send_chat_template_kwargs=bool(entry.get("send_chat_template_kwargs", True)),
+        thinking_token_budget=entry.get("thinking_token_budget"),
     )
 
 

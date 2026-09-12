@@ -43,10 +43,25 @@ class AsyncLLMClient(Protocol):
     async def complete(self, prompt: str, *, options: Sequence[str]) -> LLMResponse: ...
 
 
-def openai_extra_body(*, thinking: bool, reasoning_effort: str | None) -> dict[str, Any]:
+DEFAULT_REQUEST_TIMEOUT = 120.0
+THINKING_REQUEST_TIMEOUT = 300.0
+
+
+def request_timeout(*, thinking: bool) -> float:
+    return THINKING_REQUEST_TIMEOUT if thinking else DEFAULT_REQUEST_TIMEOUT
+
+
+def openai_extra_body(
+    *,
+    thinking: bool,
+    reasoning_effort: str | None,
+    thinking_token_budget: int | None = None,
+) -> dict[str, Any]:
     extra: dict[str, Any] = {"chat_template_kwargs": {"enable_thinking": thinking}}
     if reasoning_effort:
         extra["reasoning_effort"] = reasoning_effort
+    if thinking_token_budget is not None:
+        extra["thinking_token_budget"] = int(thinking_token_budget)
     return extra
 
 
@@ -61,6 +76,7 @@ def chat_completion_kwargs(
     thinking: bool,
     reasoning_effort: str | None,
     send_chat_template_kwargs: bool,
+    thinking_token_budget: int | None = None,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
         "model": model_id,
@@ -72,7 +88,9 @@ def chat_completion_kwargs(
         kwargs["response_format"] = json_schema_for_options(options)
     if send_chat_template_kwargs:
         kwargs["extra_body"] = openai_extra_body(
-            thinking=thinking, reasoning_effort=reasoning_effort
+            thinking=thinking,
+            reasoning_effort=reasoning_effort,
+            thinking_token_budget=thinking_token_budget,
         )
     return kwargs
 
@@ -92,19 +110,21 @@ class OpenAICompatClient:
         api_key: str = "EMPTY",
         temperature: float = 0.5,
         max_tokens: int = 512,
-        timeout: float = 120.0,
+        timeout: float | None = None,
         provider: str = "openai_compat",
         reasoning_effort: str | None = None,
         thinking: bool = False,
         json_schema: bool = True,
         send_chat_template_kwargs: bool = True,
+        thinking_token_budget: int | None = None,
     ):
         _require_localhost(base_url, provider)
+        resolved_timeout = request_timeout(thinking=thinking) if timeout is None else timeout
         self._client = OpenAI(
             api_key=api_key or "EMPTY",
             base_url=base_url.rstrip("/") + "/",
             max_retries=0,
-            timeout=timeout,
+            timeout=resolved_timeout,
         )
         self.model_id = model_id
         self.temperature = temperature
@@ -114,6 +134,8 @@ class OpenAICompatClient:
         self.thinking = thinking
         self.json_schema = json_schema
         self.send_chat_template_kwargs = send_chat_template_kwargs
+        self.thinking_token_budget = thinking_token_budget
+        self.timeout = resolved_timeout
 
     def complete(self, prompt: str, *, options: Sequence[str]) -> LLMResponse:
         kwargs = chat_completion_kwargs(
@@ -126,6 +148,7 @@ class OpenAICompatClient:
             thinking=self.thinking,
             reasoning_effort=self.reasoning_effort,
             send_chat_template_kwargs=self.send_chat_template_kwargs,
+            thinking_token_budget=self.thinking_token_budget,
         )
         response = self._client.chat.completions.create(**kwargs)
         message = response.choices[0].message
@@ -160,19 +183,21 @@ class AsyncOpenAICompatClient:
         api_key: str = "EMPTY",
         temperature: float = 0.5,
         max_tokens: int = 512,
-        timeout: float = 120.0,
+        timeout: float | None = None,
         provider: str = "openai_compat",
         reasoning_effort: str | None = None,
         thinking: bool = False,
         json_schema: bool = True,
         send_chat_template_kwargs: bool = True,
+        thinking_token_budget: int | None = None,
     ):
         _require_localhost(base_url, provider)
+        resolved_timeout = request_timeout(thinking=thinking) if timeout is None else timeout
         self._client = AsyncOpenAI(
             api_key=api_key or "EMPTY",
             base_url=base_url.rstrip("/") + "/",
             max_retries=0,
-            timeout=timeout,
+            timeout=resolved_timeout,
         )
         self.model_id = model_id
         self.temperature = temperature
@@ -182,6 +207,8 @@ class AsyncOpenAICompatClient:
         self.thinking = thinking
         self.json_schema = json_schema
         self.send_chat_template_kwargs = send_chat_template_kwargs
+        self.thinking_token_budget = thinking_token_budget
+        self.timeout = resolved_timeout
 
     async def complete(self, prompt: str, *, options: Sequence[str]) -> LLMResponse:
         kwargs = chat_completion_kwargs(
@@ -194,6 +221,7 @@ class AsyncOpenAICompatClient:
             thinking=self.thinking,
             reasoning_effort=self.reasoning_effort,
             send_chat_template_kwargs=self.send_chat_template_kwargs,
+            thinking_token_budget=self.thinking_token_budget,
         )
         response = await self._client.chat.completions.create(**kwargs)
         message = response.choices[0].message
