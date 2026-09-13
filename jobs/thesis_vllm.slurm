@@ -1,7 +1,7 @@
 #!/bin/bash
 # Thesis counted-path job. vLLM pin: v0.28.0 (stable as of 2026-09-11).
-# Prefer VLLM_SIF=${SCRATCH}/images/vllm-openai-v0.28.0.sif after apptainer pull.
-# Override with VLLM_MODULE / VLLM_SIF / VLLM_LAUNCH. technical-smoke uses Gemma 4 E2B on A40.
+# Keeper / counted / pilot-run submit: sbatch -G 2 --mem=128G (Yen fill freeze 2026-09-13).
+# Header -G 1 --mem=64G stays for technical-smoke E2B.
 # Not the repo-root Ollama smoke.
 #SBATCH --job-name=thesis-vllm
 #SBATCH -p gpu

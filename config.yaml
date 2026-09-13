@@ -92,12 +92,12 @@ models:
     gpus: 2
     tp: 2
     max_model_len: 8192
-    max_concurrent_runs: 4
-    in_flight_limit: 8
-    max_num_seqs: 16
+    max_concurrent_runs: 32
+    in_flight_limit: 66
+    max_num_seqs: 64
     seed_indices_per_slice:
-      emergence: 8
-      cm: 4
+      emergence: 32
+      cm: 32
   gemma4_e2b:
     model_id: google/gemma-4-E2B-it
     revision: placeholder-revision
@@ -130,12 +130,12 @@ models:
     gpus: 2
     tp: 2
     max_model_len: 8192
-    max_concurrent_runs: 4
-    in_flight_limit: 8
-    max_num_seqs: 16
+    max_concurrent_runs: 32
+    in_flight_limit: 66
+    max_num_seqs: 64
     seed_indices_per_slice:
-      emergence: 8
-      cm: 4
+      emergence: 32
+      cm: 32
   glm4_32b:
     model_id: zai-org/GLM-4-32B-0414
     revision: placeholder-revision
@@ -149,12 +149,12 @@ models:
     gpus: 2
     tp: 2
     max_model_len: 8192
-    max_concurrent_runs: 4
-    in_flight_limit: 8
-    max_num_seqs: 16
+    max_concurrent_runs: 32
+    in_flight_limit: 66
+    max_num_seqs: 64
     seed_indices_per_slice:
-      emergence: 8
-      cm: 4
+      emergence: 32
+      cm: 32
   qwen38_27b:
     model_id: Qwen/Qwen3.8-27B
     revision: placeholder-revision
@@ -168,12 +168,12 @@ models:
     gpus: 2
     tp: 2
     max_model_len: 8192
-    max_concurrent_runs: 4
-    in_flight_limit: 8
-    max_num_seqs: 16
+    max_concurrent_runs: 32
+    in_flight_limit: 66
+    max_num_seqs: 64
     seed_indices_per_slice:
-      emergence: 8
-      cm: 4
+      emergence: 32
+      cm: 32
   mistral_small32:
     model_id: mistralai/Mistral-Small-3.2-24B-Instruct-2506
     revision: placeholder-revision
