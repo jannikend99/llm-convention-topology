@@ -497,6 +497,13 @@ def _resume_gates(cfg: RunConfig, meta: Mapping[str, Any], state: RunState) -> N
             raise RunFailedError(f"resume blocked: {key} mismatch", error_class="config")
 
 
+def _in_flight_at_send(limiter: asyncio.Semaphore | None, *, limit: int) -> int | None:
+    if limiter is None:
+        return None
+    remaining = int(getattr(limiter, "_value"))
+    return max(0, int(limit) - remaining)
+
+
 async def _decision(
     *,
     cfg: RunConfig,
@@ -538,6 +545,7 @@ async def _decision(
                 schema_valid=False, error_class="transport", raw="", enum_label=None, reason=None,
                 duration_ms=duration_ms, http_status=None, finish_reason=None, usage={},
                 prompt_sha256=prompt_sha256, t_start=t_start, t_end=default_now(),
+                in_flight_at_send=_in_flight_at_send(limiter, limit=cfg.in_flight_limit),
             )
             events.emit(row)
             if on_stop:
@@ -547,11 +555,14 @@ async def _decision(
             continue
         t_start = default_now()
         t0 = time.monotonic()
+        occupancy = _in_flight_at_send(limiter, limit=cfg.in_flight_limit)
         try:
             if limiter is not None:
                 async with limiter:
+                    occupancy = _in_flight_at_send(limiter, limit=cfg.in_flight_limit)
                     response = await client.complete(prompt, options=options)
             else:
+                occupancy = None
                 response = await client.complete(prompt, options=options)
             duration_ms = int((time.monotonic() - t0) * 1000)
             t_end = default_now()
@@ -568,6 +579,7 @@ async def _decision(
                 duration_ms=duration_ms, http_status=response.http_status, finish_reason=response.finish_reason,
                 usage=response.usage, reasoning=response.reasoning,
                 prompt_sha256=prompt_sha256, t_start=t_start, t_end=t_end,
+                in_flight_at_send=occupancy,
             )
             events.emit(row)
             if on_stop:
@@ -587,6 +599,7 @@ async def _decision(
                 schema_valid=False, error_class=error_class, raw=raw, enum_label=None, reason=None,
                 duration_ms=duration_ms, http_status=getattr(exc, "status_code", None), finish_reason=None,
                 usage={}, prompt_sha256=prompt_sha256, t_start=t_start, t_end=t_end,
+                in_flight_at_send=occupancy if limiter is not None else None,
             )
             events.emit(row)
             if on_stop:
@@ -643,7 +656,7 @@ def _attempt_row(
         "max_tokens": cfg.max_tokens,
         "queue_wait_ms": None,
         "inference_ms": None,
-        "in_flight_at_send": None,
+        "in_flight_at_send": kwargs.get("in_flight_at_send"),
     }
 
 
@@ -663,38 +676,47 @@ async def _one_interaction(
     p1, p2 = _pair(state.simulation, state.rng_pairing)
     option_order = list(cfg.options)
     state.rng_option.shuffle(option_order)
-    answers: list[str] = []
-    used_ids: list[str | None] = []
-    llm_calls: list[bool] = []
-    for agent, partner in ((p1, p2), (p2, p1)):
+    answers: list[str | None] = [None, None]
+    used_ids: list[str | None] = [None, None]
+    llm_calls = [False, False]
+    pending: list[tuple[int, Any]] = []
+    for slot, (agent, partner) in enumerate(((p1, p2), (p2, p1))):
         player = state.simulation[agent]
         if player.get("committed_tag"):
-            answers.append(state.convergence["committed_to"])
-            used_ids.append(None)
-            llm_calls.append(False)
+            answers[slot] = state.convergence["committed_to"]
+            used_ids[slot] = None
+            llm_calls[slot] = False
             state.n_skipped_cm_turns += 1
             continue
         prompt = build_user_prompt(player, cfg.memory_size, cfg.rewards, option_order)
-        label, attempt_id = await _decision(
-            cfg=cfg,
-            state=state,
-            client=client,
-            prompt=prompt,
-            options=option_order,
-            run_id=run_id,
-            t=t,
-            agent_id=agent,
-            partner_id=partner,
-            option_order=option_order,
-            events=events,
-            health=health,
-            sleep=sleep,
-            on_stop=on_stop,
-            limiter=limiter,
+        pending.append(
+            (
+                slot,
+                _decision(
+                    cfg=cfg,
+                    state=state,
+                    client=client,
+                    prompt=prompt,
+                    options=option_order,
+                    run_id=run_id,
+                    t=t,
+                    agent_id=agent,
+                    partner_id=partner,
+                    option_order=option_order,
+                    events=events,
+                    health=health,
+                    sleep=sleep,
+                    on_stop=on_stop,
+                    limiter=limiter,
+                ),
+            )
         )
-        answers.append(label)
-        used_ids.append(attempt_id)
-        llm_calls.append(True)
+    if pending:
+        results = await asyncio.gather(*(coro for _slot, coro in pending))
+        for (slot, _coro), (label, attempt_id) in zip(pending, results):
+            answers[slot] = label
+            used_ids[slot] = attempt_id
+            llm_calls[slot] = True
     a1, a2 = answers
     payoff = get_outcome(a1, a2, cfg.rewards)
     state.simulation[p1]["interactions"].append(p2)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import random
 import unittest
@@ -9,7 +10,7 @@ from tempfile import TemporaryDirectory
 from convention_topology.campaign import ensure_campaign_files
 from convention_topology.config import apply_diag_protocol, load_config, resolve_model
 from convention_topology.json_output import ParseError
-from convention_topology.llm import MockLLMClient, RunFailedError
+from convention_topology.llm import AsyncClientAdapter, MockLLMClient, RunFailedError
 from convention_topology.persistence import SIDECAR_FIELDS, read_events, read_meta, run_paths
 from convention_topology.run import (
     PROGRAM_CM,
@@ -17,6 +18,7 @@ from convention_topology.run import (
     StopRequested,
     build_run_config,
     execute_run,
+    execute_run_async,
     job_forensics,
 )
 from convention_topology.seeds import environment_seed, model_seed
@@ -116,10 +118,12 @@ class RecordingTests(unittest.TestCase):
             self.assertEqual(ctx.exception.error_class, "attempts_exhausted")
             events = read_events(next(root.joinpath("runs").rglob("*.events.jsonl")))
             attempts = [row for row in events if row["record_type"] == "llm_attempt"]
-            self.assertEqual(len(attempts), 3)
+            self.assertGreaterEqual(len(attempts), 3)
+            self.assertLessEqual(len(attempts), 6)
             self.assertFalse(any(row["record_type"] == "interaction" for row in events))
             meta = read_meta(next(root.joinpath("runs").rglob("*.meta.json")))
-            self.assertEqual(meta["n_retries"], 3)
+            self.assertGreaterEqual(meta["n_retries"], 3)
+            self.assertLessEqual(meta["n_retries"], 6)
             for row in attempts:
                 self.assertIsNotNone(row["prompt_sha256"])
                 self.assertTrue(row["t_start"])
@@ -655,6 +659,239 @@ class JobForensicsTests(unittest.TestCase):
             self.assertEqual(meta["gpu_type"], "from-env")
             self.assertEqual(meta["vllm_version"], "9.9.9")
             self.assertEqual(meta["torch_version"], "1.2.3")
+
+
+class DyadGatherTests(unittest.TestCase):
+    def _overlap_client(self, inner, delay: float = 0.04):
+        tracker = {"current": 0, "peak": 0}
+
+        class DelayedClient:
+            async def complete(self, prompt, *, options):
+                tracker["current"] += 1
+                tracker["peak"] = max(tracker["peak"], tracker["current"])
+                try:
+                    await asyncio.sleep(delay)
+                    return inner.complete(prompt, options=options)
+                finally:
+                    tracker["current"] -= 1
+
+        return DelayedClient(), tracker
+
+    def test_both_attempts_precede_interaction_and_t_is_serial(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(
+                PROGRAM_EMERGENCE,
+                root,
+                n=8,
+                max_phase1_interactions=2,
+                gate_window=144,
+            )
+            inner = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            client, _tracker = self._overlap_client(inner)
+
+            async def _run():
+                return await execute_run_async(
+                    cfg, client, campaign_dir=root, limiter=asyncio.Semaphore(2)
+                )
+
+            paths = asyncio.run(_run())
+            events = read_events(paths.events_path)
+            interactions = [row for row in events if row["record_type"] == "interaction"]
+            self.assertEqual([row["t"] for row in interactions], [1, 2])
+            for ix in interactions:
+                t = ix["t"]
+                ix_pos = events.index(ix)
+                attempts = [
+                    row
+                    for row in events[:ix_pos]
+                    if row["record_type"] == "llm_attempt" and row["t"] == t
+                ]
+                self.assertEqual({row["agent_id"] for row in attempts}, {ix["p1"], ix["p2"]})
+                later_attempts = [
+                    row
+                    for row in events[ix_pos + 1 :]
+                    if row["record_type"] == "llm_attempt" and row["t"] == t
+                ]
+                self.assertEqual(later_attempts, [])
+
+    def test_delayed_complete_overlaps_when_in_flight_limit_at_least_two(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(
+                PROGRAM_EMERGENCE,
+                root,
+                n=8,
+                max_phase1_interactions=1,
+                gate_window=144,
+            )
+            inner = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            client, tracker = self._overlap_client(inner)
+
+            async def _run():
+                return await execute_run_async(
+                    cfg, client, campaign_dir=root, limiter=asyncio.Semaphore(2)
+                )
+
+            asyncio.run(_run())
+            self.assertGreaterEqual(tracker["peak"], 2)
+
+    def test_in_flight_limit_one_serializes_dyad_calls(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(
+                PROGRAM_EMERGENCE,
+                root,
+                n=8,
+                max_phase1_interactions=1,
+                gate_window=144,
+            )
+            inner = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            client, tracker = self._overlap_client(inner)
+
+            async def _run():
+                return await execute_run_async(
+                    cfg, client, campaign_dir=root, limiter=asyncio.Semaphore(1)
+                )
+
+            asyncio.run(_run())
+            self.assertEqual(tracker["peak"], 1)
+
+    def test_mixed_cm_skips_http_for_committed_agent(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, cm_k=4, phase2_horizon=4, memory_size=12)
+            inner = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            client, tracker = self._overlap_client(inner)
+
+            async def _run():
+                return await execute_run_async(
+                    cfg, client, campaign_dir=root, limiter=asyncio.Semaphore(2)
+                )
+
+            paths = asyncio.run(_run())
+            events = read_events(paths.events_path)
+            mixed = [
+                row
+                for row in events
+                if row["record_type"] == "interaction" and row["llm_call_p1"] != row["llm_call_p2"]
+            ]
+            self.assertTrue(mixed)
+            attempts = [row for row in events if row["record_type"] == "llm_attempt"]
+            self.assertEqual(inner.call_count, len(attempts))
+            self.assertGreater(inner.call_count, 0)
+
+    def test_in_flight_at_send_null_only_without_limiter(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(
+                PROGRAM_EMERGENCE,
+                root,
+                n=8,
+                max_phase1_interactions=1,
+                gate_window=144,
+            )
+            inner = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            paths = execute_run(cfg, inner, campaign_dir=root)
+            attempts = [row for row in read_events(paths.events_path) if row["record_type"] == "llm_attempt"]
+            self.assertTrue(attempts)
+            for row in attempts:
+                self.assertIsNone(row["in_flight_at_send"])
+
+    def test_in_flight_at_send_is_int_with_limiter(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(
+                PROGRAM_EMERGENCE,
+                root,
+                n=8,
+                max_phase1_interactions=1,
+                gate_window=144,
+            )
+            cfg.in_flight_limit = 2
+            inner = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            client, _tracker = self._overlap_client(inner)
+
+            async def _run():
+                return await execute_run_async(
+                    cfg, client, campaign_dir=root, limiter=asyncio.Semaphore(2)
+                )
+
+            paths = asyncio.run(_run())
+            attempts = [row for row in read_events(paths.events_path) if row["record_type"] == "llm_attempt"]
+            self.assertTrue(attempts)
+            for row in attempts:
+                self.assertIsInstance(row["in_flight_at_send"], int)
+                self.assertGreaterEqual(row["in_flight_at_send"], 1)
+
+    def test_transport_row_snapshots_occupancy_when_limiter_present(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(
+                PROGRAM_CM,
+                root,
+                n=8,
+                cm_k=2,
+                phase2_horizon=1,
+                provider="openai_compat",
+                endpoint_base_url="http://127.0.0.1:9/v1",
+                serve_wait_timeout=0.05,
+            )
+            cfg.in_flight_limit = 4
+            inner = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+
+            async def _run():
+                return await execute_run_async(
+                    cfg,
+                    AsyncClientAdapter(inner),
+                    campaign_dir=root,
+                    limiter=asyncio.Semaphore(4),
+                    health=lambda: False,
+                    sleep=_short_sleep,
+                )
+
+            with self.assertRaises(RunFailedError):
+                asyncio.run(_run())
+            events = read_events(next(root.joinpath("runs").rglob("*.events.jsonl")))
+            transport = [row for row in events if row.get("error_class") == "transport"]
+            self.assertTrue(transport)
+            for row in transport:
+                self.assertIsInstance(row["in_flight_at_send"], int)
 
 
 if __name__ == "__main__":

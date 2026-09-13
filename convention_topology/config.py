@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -312,6 +313,28 @@ def check_campaign_name(name: str) -> str:
     return campaign
 
 
+FILL_ENV_FIELDS = (
+    ("FILL_MAX_CONCURRENT_RUNS", "max_concurrent_runs"),
+    ("FILL_IN_FLIGHT_LIMIT", "in_flight_limit"),
+    ("FILL_MAX_NUM_SEQS", "max_num_seqs"),
+)
+
+
+def _positive_int_env(name: str) -> int | None:
+    if name not in os.environ:
+        return None
+    raw = os.environ[name]
+    if raw is None or str(raw).strip() == "":
+        raise ConfigError(f"{name} must be a positive integer")
+    try:
+        value = int(str(raw).strip())
+    except ValueError as exc:
+        raise ConfigError(f"{name} must be a positive integer") from exc
+    if value <= 0:
+        raise ConfigError(f"{name} must be a positive integer")
+    return value
+
+
 # Ashery emergence ten-letter set (not a counted default; diag campaigns only).
 DIAG_LETTER_POOL = ("Q", "M", "X", "Y", "F", "J", "P", "R", "C", "D")
 
@@ -392,6 +415,15 @@ def resolve_model(config: Mapping[str, Any], shorthand: str) -> ModelSpec:
     base_url = "" if provider == "mock" else str(serve["base_url"])
     if provider != "mock" and not is_localhost_url(base_url):
         raise ConfigError("non-localhost base_url fails unless provider is mock")
+    caps = {
+        "max_concurrent_runs": int(entry["max_concurrent_runs"]),
+        "in_flight_limit": int(entry["in_flight_limit"]),
+        "max_num_seqs": int(entry["max_num_seqs"]),
+    }
+    for env_name, field in FILL_ENV_FIELDS:
+        override = _positive_int_env(env_name)
+        if override is not None:
+            caps[field] = override
     return ModelSpec(
         shorthand=shorthand,
         provider=provider,
@@ -409,9 +441,9 @@ def resolve_model(config: Mapping[str, Any], shorthand: str) -> ModelSpec:
         gpus=int(entry["gpus"]),
         tp=int(entry["tp"]),
         max_model_len=int(entry["max_model_len"]),
-        max_concurrent_runs=int(entry["max_concurrent_runs"]),
-        in_flight_limit=int(entry["in_flight_limit"]),
-        max_num_seqs=int(entry["max_num_seqs"]),
+        max_concurrent_runs=caps["max_concurrent_runs"],
+        in_flight_limit=caps["in_flight_limit"],
+        max_num_seqs=caps["max_num_seqs"],
         seed_indices_per_slice={
             "emergence": int(entry["seed_indices_per_slice"]["emergence"]),
             "cm": int(entry["seed_indices_per_slice"]["cm"]),

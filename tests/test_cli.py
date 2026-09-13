@@ -28,7 +28,181 @@ class DirtyGitCliTests(unittest.TestCase):
         source = (Path(__file__).resolve().parent.parent / "convention_topology" / "orchestration.py").read_text(
             encoding="utf-8"
         )
-        self.assertIn("install_sigterm=True", source)
+        self.assertEqual(source.count("install_process_sigterm()"), 1)
+        self.assertNotIn("install_sigterm=True", source)
+        skip_at = source.find('{"completed", "censored", "failed"}')
+        slot_at = source.find("async with run_slots")
+        self.assertGreater(skip_at, 0)
+        self.assertGreater(slot_at, skip_at)
+
+    def test_terminal_sidecar_does_not_call_execute_run(self):
+        import asyncio
+        import json
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import AsyncMock, patch
+
+        from convention_topology.campaign import ensure_campaign_files
+        from convention_topology.config import load_config, resolve_model
+        from convention_topology.orchestration import run_slice_async
+        from convention_topology.persistence import build_run_id, encode_run_key, run_paths
+        from convention_topology.run import build_run_config
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = load_config()
+            files = ensure_campaign_files(root, config)
+            spec = resolve_model(config, "mock")
+            cfg = build_run_config(
+                config,
+                spec,
+                program="emergence",
+                topology="mixing",
+                seed_index=0,
+                cm_k=None,
+                pool_labels=files["pool"]["labels"],
+                pool_sha256=files["pool"]["sha256"],
+                code_commit="test",
+                artifact_root=str(root),
+            )
+            run_key = encode_run_key(
+                campaign=cfg.campaign,
+                program=cfg.program,
+                model_id=cfg.model_id,
+                topology=cfg.topology,
+                cm_k=cfg.cm_k,
+                seed_index=cfg.seed_index,
+            )
+            paths = run_paths(root, cfg.model_shorthand, cfg.topology, build_run_id(run_key))
+            paths.meta_path.parent.mkdir(parents=True, exist_ok=True)
+            paths.meta_path.write_text(json.dumps({"run_status": "completed"}), encoding="utf-8")
+            with patch(
+                "convention_topology.orchestration.execute_run_async", new_callable=AsyncMock
+            ) as mocked:
+                statuses = asyncio.run(
+                    run_slice_async(
+                        config,
+                        spec,
+                        program="emergence",
+                        campaign_dir=root,
+                        topology="mixing",
+                        seed_from=0,
+                        seed_to=1,
+                    )
+                )
+            mocked.assert_not_called()
+            self.assertEqual(statuses, ["completed"])
+
+    def test_censored_and_failed_sidecars_skip_execute_run(self):
+        import asyncio
+        import json
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import AsyncMock, patch
+
+        from convention_topology.campaign import ensure_campaign_files
+        from convention_topology.config import load_config, resolve_model
+        from convention_topology.orchestration import run_slice_async
+        from convention_topology.persistence import build_run_id, encode_run_key, run_paths
+        from convention_topology.run import build_run_config
+
+        for terminal in ("censored", "failed"):
+            with self.subTest(status=terminal):
+                with TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    config = load_config()
+                    files = ensure_campaign_files(root, config)
+                    spec = resolve_model(config, "mock")
+                    cfg = build_run_config(
+                        config,
+                        spec,
+                        program="emergence",
+                        topology="mixing",
+                        seed_index=0,
+                        cm_k=None,
+                        pool_labels=files["pool"]["labels"],
+                        pool_sha256=files["pool"]["sha256"],
+                        code_commit="test",
+                        artifact_root=str(root),
+                    )
+                    run_key = encode_run_key(
+                        campaign=cfg.campaign,
+                        program=cfg.program,
+                        model_id=cfg.model_id,
+                        topology=cfg.topology,
+                        cm_k=cfg.cm_k,
+                        seed_index=cfg.seed_index,
+                    )
+                    paths = run_paths(root, cfg.model_shorthand, cfg.topology, build_run_id(run_key))
+                    paths.meta_path.parent.mkdir(parents=True, exist_ok=True)
+                    paths.meta_path.write_text(json.dumps({"run_status": terminal}), encoding="utf-8")
+                    with patch(
+                        "convention_topology.orchestration.execute_run_async", new_callable=AsyncMock
+                    ) as mocked:
+                        statuses = asyncio.run(
+                            run_slice_async(
+                                config,
+                                spec,
+                                program="emergence",
+                                campaign_dir=root,
+                                topology="mixing",
+                                seed_from=0,
+                                seed_to=1,
+                            )
+                        )
+                    mocked.assert_not_called()
+                    self.assertEqual(statuses, [terminal])
+
+    def test_max_concurrent_runs_caps_and_two_cells_overlap(self):
+        import asyncio
+        from dataclasses import replace
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+
+        from convention_topology.config import load_config, resolve_model
+        from convention_topology.orchestration import run_slice_async
+
+        async def _peak_for(limit: int) -> int:
+            tracker = {"current": 0, "peak": 0}
+
+            async def delayed_execute(*_args, **_kwargs):
+                tracker["current"] += 1
+                tracker["peak"] = max(tracker["peak"], tracker["current"])
+                try:
+                    await asyncio.sleep(0.05)
+                finally:
+                    tracker["current"] -= 1
+
+            with TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                config = load_config()
+                spec = replace(resolve_model(config, "mock"), max_concurrent_runs=limit)
+                with patch("convention_topology.orchestration.execute_run_async", side_effect=delayed_execute):
+                    statuses = await run_slice_async(
+                        config,
+                        spec,
+                        program="emergence",
+                        campaign_dir=root,
+                        topology="mixing",
+                        seed_from=0,
+                        seed_to=2,
+                    )
+            self.assertEqual(statuses, ["failed", "failed"])
+            return tracker["peak"]
+
+        self.assertEqual(asyncio.run(_peak_for(1)), 1)
+        self.assertEqual(asyncio.run(_peak_for(2)), 2)
+
+    def test_slice_logs_effective_serve_triple(self):
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parent.parent / "convention_topology" / "orchestration.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("max_concurrent_runs=", source)
+        self.assertIn("in_flight_limit=", source)
+        self.assertIn("max_num_seqs=", source)
 
     def test_slurm_passes_started_server_base_url(self):
         from pathlib import Path
@@ -89,8 +263,17 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn("# Wait until /v1/models answers", job)
         self.assertIn("VLLM_EXTRA", job)
         self.assertIn("--enable-log-requests", job)
+        self.assertIn('if [[ " ${VLLM_EXTRA[*]} " != *" --enable-prefix-caching "* ]]; then', job)
+        self.assertIn("VLLM_EXTRA+=(--enable-prefix-caching)", job)
+        self.assertIn("#SBATCH -G 1", job)
+        self.assertNotIn("#SBATCH -G 2", job)
+        self.assertIn("gemma4_31b", job)
+        self.assertIn("olmo31_32b", job)
+        self.assertIn("qwen38_27b", job)
+        self.assertIn("glm4_32b", job)
         self.assertIn("--disable-custom-all-reduce", job)
         self.assertIn("Keep model YAML extras", job)
+        self.assertIn('if key == "MAX_NUM_SEQS" or not os.environ.get(key):', job)
         self.assertIn("diag-ashery-*", job)
         self.assertIn("DIAG_DECODE", job)
         self.assertIn("DIAG_LADDER", job)
@@ -103,6 +286,10 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn("cannot be combined with DIAG_TECH_INTERACTIONS", job)
         self.assertIn("run_counted_slice", job)
         self.assertIn("thesis_${SLURM_JOB_ID}.log", job)
+        self.assertIn("http://127.0.0.1:{port}/metrics", job)
+        self.assertIn("start_metrics_scrape", job)
+        self.assertIn("interval = 20", job)
+        self.assertIn("METRICS_RUNNER_PID", job)
 
     def test_run_main_cli_base_url_reaches_model_spec(self):
         captured = {}
@@ -338,6 +525,7 @@ class DirtyGitCliTests(unittest.TestCase):
 
         source = (Path(__file__).resolve().parent.parent / "run_one.py").read_text(encoding="utf-8")
         self.assertIn("json_schema=cfg.json_schema", source)
+        self.assertIn("limiter=asyncio.Semaphore(cfg.in_flight_limit)", source)
 
     def test_run_main_print_jobs_emits_hf_id_and_shorthand(self):
         from io import StringIO

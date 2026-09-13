@@ -16,6 +16,8 @@ from convention_topology.config import (
     apply_diag_protocol,
     apply_diag_tech_interactions,
     apply_serve_base_url,
+    check_campaign_name,
+    config_hash,
     load_config,
     protocol_fingerprint,
     resolve_model,
@@ -327,6 +329,93 @@ class BannedConfigTests(unittest.TestCase):
         self.assertEqual(raw["protocol"]["H"], 5)
         self.assertEqual(raw["protocol"]["string_length"], 5)
         self.assertNotIn("labels", raw["pool"])
+
+
+class FillOverrideTests(unittest.TestCase):
+    def setUp(self):
+        self.config = load_config()
+        import os
+        from unittest.mock import patch
+
+        env = dict(os.environ)
+        env.pop("FILL_MAX_CONCURRENT_RUNS", None)
+        env.pop("FILL_IN_FLIGHT_LIMIT", None)
+        env.pop("FILL_MAX_NUM_SEQS", None)
+        with patch.dict("os.environ", env, clear=True):
+            self.yaml_spec = resolve_model(self.config, "mock")
+
+    def test_unset_fill_keeps_yaml_caps(self):
+        import os
+        from unittest.mock import patch
+
+        env = dict(os.environ)
+        env.pop("FILL_MAX_CONCURRENT_RUNS", None)
+        env.pop("FILL_IN_FLIGHT_LIMIT", None)
+        env.pop("FILL_MAX_NUM_SEQS", None)
+        with patch.dict("os.environ", env, clear=True):
+            spec = resolve_model(self.config, "mock")
+        self.assertEqual(spec.max_concurrent_runs, self.yaml_spec.max_concurrent_runs)
+        self.assertEqual(spec.in_flight_limit, self.yaml_spec.in_flight_limit)
+        self.assertEqual(spec.max_num_seqs, self.yaml_spec.max_num_seqs)
+
+    def test_one_fill_field_overrides_only_that_cap(self):
+        import os
+        from unittest.mock import patch
+
+        env = dict(os.environ)
+        env.pop("FILL_IN_FLIGHT_LIMIT", None)
+        env.pop("FILL_MAX_NUM_SEQS", None)
+        env["FILL_MAX_CONCURRENT_RUNS"] = "9"
+        with patch.dict("os.environ", env, clear=True):
+            spec = resolve_model(self.config, "mock")
+        self.assertEqual(spec.max_concurrent_runs, 9)
+        self.assertEqual(spec.in_flight_limit, self.yaml_spec.in_flight_limit)
+        self.assertEqual(spec.max_num_seqs, self.yaml_spec.max_num_seqs)
+
+    def test_all_three_fill_overrides(self):
+        from unittest.mock import patch
+
+        env = {
+            "FILL_MAX_CONCURRENT_RUNS": "3",
+            "FILL_IN_FLIGHT_LIMIT": "6",
+            "FILL_MAX_NUM_SEQS": "12",
+        }
+        with patch.dict("os.environ", env, clear=False):
+            spec = resolve_model(self.config, "mock")
+        self.assertEqual(spec.max_concurrent_runs, 3)
+        self.assertEqual(spec.in_flight_limit, 6)
+        self.assertEqual(spec.max_num_seqs, 12)
+
+    def test_non_int_and_non_positive_fill_raise(self):
+        from unittest.mock import patch
+
+        for name, value in (
+            ("FILL_MAX_CONCURRENT_RUNS", "x"),
+            ("FILL_IN_FLIGHT_LIMIT", "0"),
+            ("FILL_MAX_NUM_SEQS", "-2"),
+            ("FILL_MAX_CONCURRENT_RUNS", ""),
+            ("FILL_IN_FLIGHT_LIMIT", "1.5"),
+        ):
+            with self.subTest(name=name, value=value):
+                with patch.dict("os.environ", {name: value}, clear=False):
+                    with self.assertRaises(ConfigError):
+                        resolve_model(self.config, "mock")
+
+    def test_fill_does_not_change_config_hash(self):
+        from unittest.mock import patch
+
+        before = config_hash(self.config)
+        with patch.dict("os.environ", {"FILL_MAX_NUM_SEQS": "24"}, clear=False):
+            resolve_model(self.config, "mock")
+            self.assertEqual(config_hash(self.config), before)
+
+    def test_gpu_fill_campaign_accepted_slate_a_rejected(self):
+        self.assertEqual(check_campaign_name("gpu-fill-gemma4_31b-c2"), "gpu-fill-gemma4_31b-c2")
+        with self.assertRaises(ConfigError):
+            check_campaign_name("slate-a")
+        raw = copy.deepcopy(self.config)
+        raw["run"]["campaign"] = "gpu-fill-gemma4_31b-c2"
+        validate_config(raw)
 
 
 if __name__ == "__main__":

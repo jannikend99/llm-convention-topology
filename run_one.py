@@ -67,7 +67,13 @@ def main(argv: list[str] | None = None) -> int:
     client = build_client(
         model_spec, args.mock_policy, cfg.model_seed, options, json_schema=cfg.json_schema
     )
-    paths = asyncio.run(execute_run_async(cfg, client, campaign_dir=root))
+
+    async def _run():
+        return await execute_run_async(
+            cfg, client, campaign_dir=root, limiter=asyncio.Semaphore(cfg.in_flight_limit)
+        )
+
+    paths = asyncio.run(_run())
     status = read_meta(paths.meta_path)["run_status"]
     print(f"[done] run_id={paths.pickle_path.stem} status={status}", flush=True)
     return 0

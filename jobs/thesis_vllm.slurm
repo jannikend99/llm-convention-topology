@@ -155,7 +155,7 @@ defaults = {
     "TP": str(spec.tp),
 }
 for key, value in defaults.items():
-    if not os.environ.get(key):
+    if key == "MAX_NUM_SEQS" or not os.environ.get(key):
         print(f"export {key}={shlex.quote(str(value))}")
 # Keep model YAML extras; append operator VLLM_EXTRA_ARGS (do not replace).
 merged = [str(part) for part in extra]
@@ -194,6 +194,68 @@ export SERVE_HANG_SECONDS="${SERVE_HANG_SECONDS:-420}"
 
 VLLM_PID=""
 RUNNER_PID=""
+METRICS_PID=""
+
+stop_vllm() {
+  if [[ -n "${VLLM_PID}" ]] && kill -0 "${VLLM_PID}" 2>/dev/null; then
+    kill "${VLLM_PID}" 2>/dev/null || true
+    wait "${VLLM_PID}" 2>/dev/null || true
+  fi
+}
+
+stop_metrics_scrape() {
+  if [[ -n "${METRICS_PID:-}" ]] && kill -0 "${METRICS_PID}" 2>/dev/null; then
+    kill "${METRICS_PID}" 2>/dev/null || true
+    wait "${METRICS_PID}" 2>/dev/null || true
+  fi
+  METRICS_PID=""
+}
+
+start_metrics_scrape() {
+  local runner_pid="$1"
+  export METRICS_RUNNER_PID="${runner_pid}"
+  "${PYTHON}" - <<'PY' &
+import os
+import time
+import urllib.request
+from datetime import datetime, timezone
+
+pid = int(os.environ["METRICS_RUNNER_PID"])
+port = os.environ["PORT"]
+log_path = os.environ["VLLM_LOG"]
+url = f"http://127.0.0.1:{port}/metrics"
+interval = 20
+
+
+def runner_alive() -> bool:
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+while runner_alive():
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+    except Exception as exc:
+        body = f"metrics scrape failed: {exc}\n"
+    try:
+        with open(log_path, "a", encoding="utf-8") as handle:
+            handle.write(f"=== vLLM /metrics {stamp} ===\n")
+            handle.write(body)
+            if body and not body.endswith("\n"):
+                handle.write("\n")
+    except OSError:
+        pass
+    deadline = time.time() + interval
+    while time.time() < deadline and runner_alive():
+        time.sleep(1)
+PY
+  METRICS_PID=$!
+}
 
 stop_vllm() {
   if [[ -n "${VLLM_PID}" ]] && kill -0 "${VLLM_PID}" 2>/dev/null; then
@@ -221,6 +283,10 @@ fi
 # INFO: request id + SamplingParams (served temperature). Prompts stay DEBUG.
 if [[ " ${VLLM_EXTRA[*]} " != *" --enable-log-requests "* ]]; then
   VLLM_EXTRA+=(--enable-log-requests)
+fi
+# Shared prompt prefix for fill and counted serve (keepers: gemma4_31b, olmo31_32b, qwen38_27b, glm4_32b).
+if [[ " ${VLLM_EXTRA[*]} " != *" --enable-prefix-caching "* ]]; then
+  VLLM_EXTRA+=(--enable-prefix-caching)
 fi
 # Ampere TP=2: custom all-reduce can hang after CUDA graphs (Gemma 31B).
 if [[ " ${VLLM_EXTRA[*]} " != *" --disable-custom-all-reduce "* ]]; then
@@ -317,10 +383,12 @@ run_counted_slice() {
   fi
   "${runner_args[@]}" &
   RUNNER_PID=$!
+  start_metrics_scrape "${RUNNER_PID}"
   set +e
   wait "${RUNNER_PID}"
   local rc=$?
   set -e
+  stop_metrics_scrape
   RUNNER_PID=""
   return "${rc}"
 }
@@ -369,5 +437,7 @@ fi
 
 "${RUNNER_ARGS[@]}" &
 RUNNER_PID=$!
+start_metrics_scrape "${RUNNER_PID}"
 wait "${RUNNER_PID}"
+stop_metrics_scrape
 stop_vllm
