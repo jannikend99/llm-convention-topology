@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Any, Mapping
@@ -16,6 +17,22 @@ from convention_topology.seeds import graph_seed as derive_graph_seed
 
 class CampaignError(Exception):
     """Campaign identity mismatch or create failure."""
+
+
+# Job-local vLLM bind (random localhost port) is not campaign identity.
+CAMPAIGN_SERVE_BASE_URL = "http://127.0.0.1:8000/v1"
+
+
+def campaign_identity_config(config: Mapping[str, Any]) -> dict[str, Any]:
+    payload = copy.deepcopy(dict(config))
+    serve = payload.get("serve")
+    if isinstance(serve, dict) and "base_url" in serve:
+        serve["base_url"] = CAMPAIGN_SERVE_BASE_URL
+    return payload
+
+
+def campaign_config_hash(config: Mapping[str, Any]) -> str:
+    return config_hash(campaign_identity_config(config))
 
 
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -86,8 +103,8 @@ def ensure_campaign_files(root: Path, config: Mapping[str, Any]) -> dict[str, An
         "sha256": pool_sha256(pool_labels),
     }
     graphs_payload = build_graphs_payload(config)
-    snapshot = dict(config)
-    snapshot_hash = config_hash(config)
+    snapshot = campaign_identity_config(config)
+    snapshot_hash = campaign_config_hash(config)
 
     pool_path = root / "label_pool.json"
     graphs_path = root / "graphs.json"
@@ -110,7 +127,7 @@ def ensure_campaign_files(root: Path, config: Mapping[str, Any]) -> dict[str, An
 
     if snapshot_path.exists():
         existing = yaml.safe_load(snapshot_path.read_text(encoding="utf-8"))
-        if config_hash(existing) != snapshot_hash:
+        if campaign_config_hash(existing) != snapshot_hash:
             raise CampaignError("config.snapshot.yaml hash mismatch")
     else:
         _atomic_write_yaml(snapshot_path, snapshot)

@@ -296,6 +296,7 @@ class DirtyGitCliTests(unittest.TestCase):
 
         async def fake_slice(config, model_spec, **kwargs):
             captured["url"] = model_spec.base_url
+            captured["config_url"] = config["serve"]["base_url"]
             return []
 
         with patch("run_main.require_clean_worktree"), patch("run_main.run_slice_async", side_effect=fake_slice):
@@ -315,6 +316,7 @@ class DirtyGitCliTests(unittest.TestCase):
             )
         self.assertEqual(code, 0)
         self.assertEqual(captured["url"], "http://127.0.0.1:12345/v1")
+        self.assertEqual(captured["config_url"], "http://127.0.0.1:8000/v1")
 
     def test_run_main_campaign_reaches_campaign_root(self):
         from pathlib import Path

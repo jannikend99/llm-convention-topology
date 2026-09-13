@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import yaml
+
 from convention_topology.campaign import ensure_campaign_files
 from convention_topology.config import apply_diag_protocol, load_config, resolve_model
 from convention_topology.json_output import ParseError
@@ -89,6 +91,21 @@ class RecordingTests(unittest.TestCase):
             )
             self.assertTrue(meta["prepared_state_valid"])
             self.assertEqual(meta["t_cm_start"], 0)
+
+    def test_campaign_snapshot_ignores_ephemeral_serve_port(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = load_config()
+            first["serve"]["base_url"] = "http://127.0.0.1:45167/v1"
+            ensure_campaign_files(root, first)
+            snap_path = root / "config.snapshot.yaml"
+            snap = yaml.safe_load(snap_path.read_text(encoding="utf-8"))
+            self.assertEqual(snap["serve"]["base_url"], "http://127.0.0.1:8000/v1")
+            snap["serve"]["base_url"] = "http://127.0.0.1:45167/v1"
+            snap_path.write_text(yaml.safe_dump(snap, sort_keys=True), encoding="utf-8")
+            second = load_config()
+            second["serve"]["base_url"] = "http://127.0.0.1:41222/v1"
+            ensure_campaign_files(root, second)
 
     def test_cm_turns_do_not_http(self):
         with TemporaryDirectory() as tmp:

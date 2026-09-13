@@ -6,14 +6,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+from dataclasses import replace
 from pathlib import Path
 
 from convention_topology.config import (
+    ConfigError,
     apply_diag_protocol,
     apply_diag_tech_interactions,
     apply_pilot_bounds,
-    apply_serve_base_url,
     check_campaign_name,
+    is_localhost_url,
     load_config,
     resolve_model,
 )
@@ -105,8 +107,6 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--model is required when running a slice")
 
     override = args.base_url or os.environ.get("SERVE_BASE_URL") or os.environ.get("BASE_URL")
-    if override:
-        apply_serve_base_url(config, override)
 
     try:
         require_clean_worktree(REPO_ROOT)
@@ -115,6 +115,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     model_spec = resolve_model(config, args.model)
+    if override:
+        if config["serve"]["provider"] != "mock" and not is_localhost_url(override):
+            raise ConfigError("non-localhost serve.base_url fails unless provider is mock")
+        model_spec = replace(model_spec, base_url=override)
     campaign = str(config["run"]["campaign"])
     root = campaign_root(args.artifact_root if args.artifact_root is not None else config["run"]["artifact_root"], campaign, REPO_ROOT)
     programs = [args.program] if args.program else list(config["jobs"]["programs"])
