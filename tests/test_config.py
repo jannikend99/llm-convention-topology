@@ -15,6 +15,7 @@ from convention_topology.config import (
     TOPOLOGIES,
     apply_diag_protocol,
     apply_diag_tech_interactions,
+    apply_pilot_bounds,
     apply_serve_base_url,
     check_campaign_name,
     config_hash,
@@ -329,6 +330,28 @@ class BannedConfigTests(unittest.TestCase):
         self.assertEqual(raw["protocol"]["H"], 5)
         self.assertEqual(raw["protocol"]["string_length"], 5)
         self.assertNotIn("labels", raw["pool"])
+
+    def test_pilot_bounds_require_pilot_campaign(self):
+        raw = self._raw()
+        with self.assertRaises(ConfigError):
+            apply_pilot_bounds(raw, cap_phase1=1000, phase2_horizon=500)
+
+    def test_pilot_bounds_set_cap_and_horizon(self):
+        raw = self._raw()
+        raw["run"]["campaign"] = "pilot-run"
+        apply_pilot_bounds(raw, cap_phase1=1000, phase2_horizon=500)
+        self.assertEqual(raw["protocol"]["cap_phase1"], 1000)
+        self.assertEqual(raw["protocol"]["phase2_horizon"], 500)
+        self.assertEqual(raw["protocol"]["N"], 48)
+        self.assertEqual(raw["protocol"]["H"], 12)
+
+    def test_pilot_bounds_reject_out_of_range(self):
+        raw = self._raw()
+        raw["run"]["campaign"] = "pilot-run"
+        with self.assertRaises(ConfigError):
+            apply_pilot_bounds(raw, cap_phase1=100)
+        with self.assertRaises(ConfigError):
+            apply_pilot_bounds(raw, phase2_horizon=1001)
 
 
 class FillOverrideTests(unittest.TestCase):

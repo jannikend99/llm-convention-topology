@@ -397,6 +397,32 @@ def apply_diag_tech_interactions(config: dict[str, Any], n_interactions: int) ->
     return config
 
 
+def apply_pilot_bounds(
+    config: dict[str, Any],
+    *,
+    cap_phase1: int | None = None,
+    phase2_horizon: int | None = None,
+) -> dict[str, Any]:
+    """Shorter stop bounds for campaign `pilot-run` only. Counted YAML stays 5000 / 1000."""
+    campaign = str(config["run"]["campaign"])
+    if campaign != "pilot-run" and not campaign.startswith("pilot-run"):
+        raise ConfigError("PILOT_* bounds require a campaign name starting with pilot-run")
+    if cap_phase1 is not None:
+        cap = int(cap_phase1)
+        gate = int(config["protocol"]["gate_window"])
+        locked = int(LOCK_PROTOCOL["cap_phase1"])
+        if cap < gate or cap > locked:
+            raise ConfigError("PILOT_CAP_PHASE1 must lie between the gate window and the counted cap")
+        config["protocol"]["cap_phase1"] = cap
+    if phase2_horizon is not None:
+        horizon = int(phase2_horizon)
+        locked_h = int(LOCK_PROTOCOL["phase2_horizon"])
+        if horizon < 1 or horizon > locked_h:
+            raise ConfigError("PILOT_PHASE2_HORIZON must be between 1 and the counted Study-2 horizon")
+        config["protocol"]["phase2_horizon"] = horizon
+    return config
+
+
 
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
     config_path = Path(path) if path is not None else DEFAULT_CONFIG_PATH

@@ -11,6 +11,7 @@ from pathlib import Path
 from convention_topology.config import (
     apply_diag_protocol,
     apply_diag_tech_interactions,
+    apply_pilot_bounds,
     apply_serve_base_url,
     check_campaign_name,
     load_config,
@@ -82,6 +83,19 @@ def main(argv: list[str] | None = None) -> int:
     tech_n = os.environ.get("DIAG_TECH_INTERACTIONS")
     if tech_n:
         apply_diag_tech_interactions(config, int(tech_n))
+    pilot_cap = os.environ.get("PILOT_CAP_PHASE1")
+    pilot_horizon = os.environ.get("PILOT_PHASE2_HORIZON")
+    if pilot_cap or pilot_horizon:
+        apply_pilot_bounds(
+            config,
+            cap_phase1=int(pilot_cap) if pilot_cap else None,
+            phase2_horizon=int(pilot_horizon) if pilot_horizon else None,
+        )
+        print(
+            "[pilot] cap_phase1="
+            f"{config['protocol']['cap_phase1']} phase2_horizon={config['protocol']['phase2_horizon']}",
+            flush=True,
+        )
     if args.print_jobs:
         for job in print_jobs(config, program=args.program):
             print(format_job_line(job))
