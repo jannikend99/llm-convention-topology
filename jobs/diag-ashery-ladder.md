@@ -13,9 +13,9 @@ Goal of the path: get **emergence** under JSON schema, keep wall time honest, th
 5. **Study 2 CM size only**, only for models that gated in Study 1.
 6. **`pilot-run` last.** Wall-clock per slice, peak memory, JSON-enum ≥200, same frozen protocol. Then `experiment`.
 
-Do not skip to topologies, CM, or `experiment` while Olmo/GLM tech or Phase B is open.
+A–B, extra seeds (letters, \(N=24\), \(H=5\)), and the thinking probes are **done**. Do not skip to topologies, CM, or `experiment` while the **lock-cell verification** below is open.
 
-**Wall time:** every `sbatch` in A–B stays **≤ 12 h**. Phase B is one job with all three cells (including \(N=48\)); do not split. Overnight: queue Olmo/GLM Phase A as soon as tech is green, then Phase B for all six.
+**Wall time:** A–B jobs were **≤ 12 h**. The next Mixing lock-cell jobs use cap 1200; set `-t` from wall-clock after the first seed, not from the old 400-step budget.
 
 ## Six models
 
@@ -23,14 +23,14 @@ Thinking off, BF16, 2× A40, `tp: 2`. Registry commit `e4cf196`.
 
 | Shorthand | Checkpoint | Role now |
 | --- | --- | --- |
-| `gemma4_31b` | `google/gemma-4-31B-it` | Phase A schema **gated** |
-| `qwen38_27b` | `Qwen/Qwen3.8-27B` | Phase A schema **gated** |
-| `nemotron35_lightning` | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16` | Phase A schema **fragmented** (valid JSON); parse almost gated |
-| `mistral_small32` | `mistralai/Mistral-Small-3.2-24B-Instruct-2506` | Phase A schema **fragmented** (800/800 valid JSON); parse died on the matcher |
-| `olmo31_32b` | `allenai/Olmo-3.1-32B-Instruct` | Tech jobs **593629**; Phase A not started |
-| `glm4_32b` | `zai-org/GLM-4-32B-0414` | Tech jobs **593630**; Phase A not started |
+| `gemma4_31b` | `google/gemma-4-31B-it` | **keep** — schema letters \(N=24\) \(H=5\): gate 4/4 seeds |
+| `olmo31_32b` | `allenai/Olmo-3.1-32B-Instruct` | **keep** — same cell: gate 4/4 |
+| `qwen38_27b` | `Qwen/Qwen3.8-27B` | **keep** — same cell: gate 4/4 |
+| `glm4_32b` | `zai-org/GLM-4-32B-0414` | **keep** — same cell: gate 4/4 |
+| `nemotron35_lightning` | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16` | **drop for freeze** — gate 2/4 on that cell; late or cap |
+| `mistral_small32` | `mistralai/Mistral-Small-3.2-24B-Instruct-2506` | **drop for freeze** — gate 1/4; often cap without convention |
 
-## Phase A — done for the first four; still open for Olmo and GLM
+## Phase A — done (all six)
 
 ### Tech check
 
@@ -42,8 +42,8 @@ vLLM 0.28.0, 2× A40, `HF_HOME=/scratch/shared/jendress/models`. Green: `POST /v
 | `gemma4_31b` | 593516 | Ampere TP=2 |
 | `qwen38_27b` | 593588 | prefetch on yen1; GPU nodes have no HF auth |
 | `mistral_small32` | 593591 | mistral tokenizer/config/load; no `chat_template_kwargs` |
-| `olmo31_32b` | 593629 | in flight (2026-09-12) |
-| `glm4_32b` | 593630 | in flight (2026-09-12) |
+| `olmo31_32b` | 593629 | tech green; Phase A–B later completed |
+| `glm4_32b` | 593630 | tech green; Phase A–B later completed |
 
 Prefetch: `hf download` (not `huggingface-cli`). Reuse of `diag-tech-*` after a `config.yaml` change → snapshot hash mismatch; new campaign name.
 
@@ -56,25 +56,7 @@ Yen worktree must be clean. `sbatch -G 2`. Do not set `CAMPAIGN` with `DIAG_LADD
 | Parse | no `response_format`; match text to options | `diag-ashery-parse-<shorthand>` |
 | Schema | JSON enum `value`/`reason` | `diag-ashery-schema-<shorthand>` |
 
-First four: **done**. Do not rerun.
-
-Olmo and GLM: one job each, parse then schema on the same load. Start only after tech **200**.
-
-```bash
-cd /scratch/shared/jendress/exp/llm-convention-topology
-git pull
-git status --porcelain
-unset CAMPAIGN DIAG_TECH_INTERACTIONS
-export PROGRAM=emergence SEED_FROM=0 SEED_TO=1 TOPOLOGY=mixing
-export DIAG_LADDER=ab DIAG_CAP=400
-export NCCL_P2P_DISABLE=1 VLLM_EXTRA_ARGS="--disable-custom-all-reduce" HF_HOME=/scratch/shared/jendress/models
-for MODEL in olmo31_32b glm4_32b; do
-  export MODEL
-  sbatch -G 2 --mem=64G --export=ALL jobs/thesis_vllm.slurm
-done
-```
-
-Readout: parse vs schema **within** model. Gate window for \(N=24\): need 69/72. Pickles: `/scratch/shared/jendress/runs/<CAMPAIGN>/runs/<shorthand>/mixing/*.pkl`.
+All six: **done**. Do not rerun parse×schema. Pickles: `/scratch/shared/jendress/runs/<CAMPAIGN>/runs/<shorthand>/mixing/*.pkl`.
 
 `scancel` kills the **whole** job (remaining cells too). During Phase A parse, do not scancel if you still want schema on that model.
 
@@ -91,13 +73,13 @@ Nemotron **parse** took off only after \(t\approx 300\) (last50 = 6 at \(t=150\)
 - \(N=24\): no abort before \(t=180\) (except matcher death: zero valid labels, as Mistral parse at \(t=7\)).
 - \(N=48\): no abort before \(t=360\) (15 × \(N/2\)), except matcher death.
 
-After that horizon, schema cells may stop if last50 ≤ 12 **and** last50 is not up versus \(t=180\). Otherwise continue to cap 400.
+After that horizon, schema cells may stop if last50 ≤ 12 **and** last50 is not up versus \(t=180\). Otherwise continue to the job cap (400 in A–B; **1200** in lock-cell verification).
 
 That way a “dead” label means: we watched an Ashery-length emergence window and still saw no takeoff — not that we cut at a tiny prefix.
 
-## Phase B — one-factor, **JSON schema only**, all six
+## Phase B — one-factor, **JSON schema only** — done (seed 0, cap 400)
 
-After Olmo/GLM Phase A readout (schema must at least emit valid JSON; gate is not required — Mistral/Nemotron still go in).
+Do not rerun. Historical recipe below. Mistral/Nemotron were included here; they are dropped after Phase C.
 
 Freeze `DIAG_DECODE=json_schema`. Three cells, one load:
 
@@ -122,15 +104,15 @@ Queue overnight after Olmo/GLM Phase A. Two jobs at a time (GPU cap).
 
 Do **not** cross parse × H/N/strings here.
 
-## Extra seeds (repeat Phase A shape, schema only)
+## Extra seeds (repeat Phase A shape, schema only) — done (indices 1–3)
 
-After Phase A for Olmo/GLM and after Phase B is queued or done: more `seed_index` values, **JSON schema**, Mixing, \(N=24\), \(H=5\), letters, cap 400. Question: was seed 0 luck?
+Do not rerun the letter \(N=24\) \(H=5\) seed sweep. Next multi-seed work is the lock cell in Phase D. Historical note: JSON schema, Mixing, \(N=24\), \(H=5\), letters, cap 400 — was seed 0 luck?
 
 Do **not** rerun parse×schema × six models. Schema only. Start with **seeds 1–3** (`SEED_FROM=1`, `SEED_TO=4`). One job per model if the runner walks the seed range in ≤ 12 h; otherwise one seed per job.
 
 Priority if the queue is tight: Mistral and Nemotron schema first (n=1 fragmentation), then Gemma/Qwen (gate robustness), then Olmo/GLM if their Phase A schema lived.
 
-## Thinking on (queue behind A–B and extra seeds)
+## Thinking on — probed; not a freeze knob. Do not queue more for the lock cell.
 
 Not a freeze knob. Same Ashery-base cell as Phase A schema: Mixing, emergence, seed 0, \(N=24\), \(H=5\), letters, JSON schema, cap 400. Compare to thinking-off schema on the same checkpoint (F25). Do not run parse, Phase B, or the counted \(N=48\) / \(H=12\) / strings cell.
 
@@ -180,23 +162,70 @@ export HF_HOME=/scratch/shared/jendress/models
 hf download allenai/Olmo-3.1-32B-Think
 ```
 
-## Phase C — readout (no new jobs)
+## Phase C — readout (2026-09-12)
 
-Compare schema cells: base Phase A vs H vs N vs strings.
+Source: `diag-readout-pkl-2.gz` / `diag-readout-full-2.gz` (Yen runs on `yen-gpu2` / `yen-gpu3`). Mixing, emergence only. Gate = 0.95 match over window \(3N\).
 
-Decide, per model or jointly:
+**Seeds.** The only multi-seed cell is JSON schema, letters, \(N=24\), \(H=5\), thinking off (Phase A seed 0 + extra seeds 1–3). Every other knob is **seed 0**. Treat those as direction, not as an effect size.
 
-- Does JSON schema produce a convention?
-- Which one knob (if any) moves last50 / trailing-window?
-- Drop a model only if schema never coordinates **and** Phase B does not help.
+**Model.** Large effect. Gemma, Olmo, Qwen, GLM: gate 4/4 on that cell. Nemotron 2/4, Mistral 1/4. Drop the last two for the freeze set.
 
-Write the freeze in chat and then into `config.yaml`. Do not edit counted YAML during B.
+**Thinking on/off.** No positive emergence effect for models that already gate. Gemma still gated but slower (201 → 295) with 20 retries. Qwen ~unchanged. Nemotron/Olmo think at 2048 tokens died (`attempts_exhausted`); Nemotron at 4096 gated once; Olmo+4096 unfinished. Thinking stays **off**. Not a freeze knob; do not queue more think jobs for the lock cell.
 
-## Phase D — freeze protocol
+**Parse vs JSON.** JSON is required for **runnability** (Gemma/GLM/Mistral parse died on the matcher). Qwen and Olmo still gated under parse. Nemotron seed 0 almost gated under parse (window 0.94) and did **not** under schema. Schema is not shown to *boost* convention; freeze **JSON schema** so counted runs complete.
 
-One JSON-schema recipe for the models that stay. Candidates: keep counted \(N=48\), \(H=12\), strings if Phase B shows they still gate (Gemma/Qwen already gated at Ashery-like \(N=24\), \(H=5\), letters). If only letters + \(H=5\) gates, that is a **lock change** (specs + YAML), not a silent diag default.
+**Letters vs strings (Phase B, seed 0, \(N=24\), \(H=5\), schema).** Medium, model-dependent. Qwen/GLM/Olmo still gated (Olmo slower; Qwen faster). **Gemma** did not gate in 400 steps (window 0.85, last 50 at 0.94 — still climbing). Mistral/Nemotron: no gate either way. Strings are the counted pool (Flint letter-bias), not the easier diag cell.
 
-Output of D: listed models, \(N\), \(H\), pool, decode=`json_schema`, temperature 0.5. That set is used for E–G and `pilot-run`.
+**\(H=5\) vs \(H=12\) (Phase B, seed 0, letters, \(N=24\), schema).** Small to none on whether a convention forms for the four models that already gate. Qwen/GLM: same \(t_\text{gate}\). Gemma: slightly slower. Olmo: clearly slower (200 → 398). H = 12 is the human-analysis lock (Guilbeault \(M=12\)), not a sweep winner.
+
+**\(N=24\) vs \(N=48\) (Phase B, seed 0, letters, \(H=5\), schema, cap 400).** Not a clean causal test. Mixing degree goes 23 → 47 and the gate window 72 → 144, but cap stayed 400. Nobody gated. Gemma was still climbing (last 50 ≈ 0.94). Larger \(N\) needs a **longer** horizon, not a verdict that \(N=48\) blocks emergence.
+
+**Do not use for readout.** `diag-tech-*` (cap 5). `diag-h5-letters` / `diag-h12-letters` / `diag-h5-strings` / `diag-g31-*`: wrong model (Gemma-E2B) or `killed`, config vs meta unclean. Parse/think `attempts_exhausted` is decode death, not “no convention”.
+
+## Phase D — provisional freeze; next runs verify the lock cell
+
+Do **not** edit counted `config.yaml` yet. The cheap cell (letters, \(H=5\), \(N=24\)) is not the freeze. The freeze **candidate** is the existing lock, now that the four models look viable:
+
+| Knob | Provisional | Why |
+| --- | --- | --- |
+| Models | `gemma4_31b`, `olmo31_32b`, `qwen38_27b`, `glm4_32b` | only 4/4 gate set |
+| Thinking | off | no emergence gain |
+| Decode | `json_schema` | runs complete |
+| Pool | 5-char strings, \(W=10\) | lock (Flint); not because it gated more easily |
+| \(H\) | 12 | lock (human \(M=12\)); sweep said small effect on gate among keepers |
+| \(N\) | 48 | lock; **unverified** at an honest horizon |
+| Topology for this check | Mixing only | still Phase D, not F |
+| Seeds (this check) | **4** (indices 0–3) | same count as the letter cell; not counted \(n=32\) |
+| Cap / horizon (this check) | **1200** | window 144; Ashery-length floor 360; not 400 and not counted 5000 |
+
+**Next jobs (do this before E–G).** Crossed lock cell, not another one-factor split: Mixing, emergence, JSON schema, strings, \(H=12\), \(N=48\), thinking off, the four keepers.
+
+**Seeds.** First wave: `SEED_FROM=0`, `SEED_TO=4` → indices **0–3**. That matches the letter-cell evidence, so 4/4 vs 2/4 is readable. Do not start at 8: Yen allows only two `tp: 2` jobs at once. If a keeper is mixed (2/4 or 3/4) or Gemma stays just under 0.95, add **only that model** seeds 4–7 (`SEED_FROM=4`, `SEED_TO=8`, new campaign name, e.g. `diag-lockcell-${MODEL}-s47`). Counted \(n=32\) stays for `experiment`.
+
+**Horizon.** Gate window is 144. Do not abort before \(t=360\) except matcher death (Ashery-scale floor: 15 rounds × \(N/2\)). Cap **1200**, not 400 and not 5000. Phase B \(N=48\) letters \(H=5\) still had Gemma climbing at 400 (last 50 ≈ 0.94). Strings × \(H=12\) × larger \(N\) should rise later, not earlier. Olmo already needed \(t=398\) at \(H=12\), \(N=24\). Counted `cap_phase1` 5000 is too expensive for this check. Runs that gate **stop at the gate**; 1200 is paid only by slow or non-gating seeds. After \(t=360\), optional early stop if last50 ≤ 12 **and** last50 is not up versus \(t=180\); otherwise continue to 1200.
+
+**Wall time.** Set `-t` from the first seed, not a 12 h guess. Roughly ~3 h if a seed hits 1200; early gates are shorter. Four models × four seeds, two jobs at a time: about 1–2 days if most gate early, up to ~3 days if many hit the cap.
+
+This is lock **verification**. Gemma-strings seed 0 at \(N=24\) was a near miss under a short cap. If ≥3/4 seeds gate per model in this cell, write that freeze into `config.yaml` and go to Phase E. If Gemma or Olmo stay under 0.95 at 1200, that is a **lock-change discussion** (not a silent return to letters / \(H=5\) / \(N=24\)).
+
+```bash
+cd /scratch/shared/jendress/exp/llm-convention-topology
+git pull
+git status --porcelain
+unset CAMPAIGN DIAG_LADDER DIAG_TECH_INTERACTIONS
+export PROGRAM=emergence SEED_FROM=0 SEED_TO=4 TOPOLOGY=mixing
+export DIAG_N=48 DIAG_H=12 DIAG_POOL=strings DIAG_DECODE=json_schema DIAG_CAP=1200
+export NCCL_P2P_DISABLE=1 VLLM_EXTRA_ARGS="--disable-custom-all-reduce"
+export HF_HOME=/scratch/shared/jendress/models
+for MODEL in gemma4_31b olmo31_32b qwen38_27b glm4_32b; do
+  export MODEL
+  export CAMPAIGN=diag-lockcell-${MODEL}
+  sbatch -G 2 --mem=64G --export=ALL jobs/thesis_vllm.slurm
+done
+unset CAMPAIGN
+```
+
+Two jobs at a time (Yen GPU cap, `tp: 2`). Do not reuse `diag-g31-*` or E2B letter/string campaign names. Do not rerun parse, Phase B one-factor, letter extra-seeds, or thinking for this verification.
 
 ## Phase E — GPU fill (Mixing only, frozen protocol)
 
