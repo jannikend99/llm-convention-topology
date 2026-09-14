@@ -8,7 +8,7 @@
 #SBATCH -G 1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH -t 12:00:00
+#SBATCH -t 1-00:00:00
 #SBATCH -o /scratch/shared/%u/vllm/thesis_vllm_%j.out
 #SBATCH -e /scratch/shared/%u/vllm/thesis_vllm_%j.err
 #SBATCH --mail-type=END,FAIL
@@ -82,12 +82,79 @@ fi
 VENV="${SCRATCH}/venvs/thesis"
 VLLM_LOG="${SCRATCH}/vllm/thesis_${SLURM_JOB_ID}.log"
 
-: "${MODEL:?set MODEL to a config.yaml shorthand (from --print-jobs or a fit hand flag)}"
-: "${SEED_TO:?set SEED_TO so a missing flag cannot run the full seed grid as technical-smoke}"
-: "${TOPOLOGY:?set TOPOLOGY so a missing flag cannot run every topology as technical-smoke}"
-export MODEL
+# Parse argv after `--` (sbatch ... thesis_vllm.slurm -- --campaign … --task …).
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
+COUNTED_MODEL=""
+COUNTED_CAMPAIGN=""
+COUNTED_ARTIFACT_ROOT=""
+HAS_TASK=0
+HAS_BASE_URL=0
+HAS_ARTIFACT_ROOT=0
+_parse_i=0
+_parse_args=("$@")
+while [[ ${_parse_i} -lt ${#_parse_args[@]} ]]; do
+  _arg="${_parse_args[${_parse_i}]}"
+  case "${_arg}" in
+    --model)
+      COUNTED_MODEL="${_parse_args[$((_parse_i + 1))]:-}"
+      _parse_i=$((_parse_i + 2))
+      ;;
+    --model=*)
+      COUNTED_MODEL="${_arg#--model=}"
+      _parse_i=$((_parse_i + 1))
+      ;;
+    --campaign)
+      COUNTED_CAMPAIGN="${_parse_args[$((_parse_i + 1))]:-}"
+      _parse_i=$((_parse_i + 2))
+      ;;
+    --campaign=*)
+      COUNTED_CAMPAIGN="${_arg#--campaign=}"
+      _parse_i=$((_parse_i + 1))
+      ;;
+    --task)
+      HAS_TASK=1
+      _parse_i=$((_parse_i + 2))
+      ;;
+    --task=*)
+      HAS_TASK=1
+      _parse_i=$((_parse_i + 1))
+      ;;
+    --artifact-root)
+      COUNTED_ARTIFACT_ROOT="${_parse_args[$((_parse_i + 1))]:-}"
+      HAS_ARTIFACT_ROOT=1
+      _parse_i=$((_parse_i + 2))
+      ;;
+    --artifact-root=*)
+      COUNTED_ARTIFACT_ROOT="${_arg#--artifact-root=}"
+      HAS_ARTIFACT_ROOT=1
+      _parse_i=$((_parse_i + 1))
+      ;;
+    --base-url)
+      HAS_BASE_URL=1
+      _parse_i=$((_parse_i + 2))
+      ;;
+    --base-url=*)
+      HAS_BASE_URL=1
+      _parse_i=$((_parse_i + 1))
+      ;;
+    *)
+      _parse_i=$((_parse_i + 1))
+      ;;
+  esac
+done
+
+if [[ -n "${DIAG_LADDER:-}" && "${HAS_TASK}" -eq 1 ]]; then
+  echo "DIAG_LADDER cannot be combined with --task" >&2
+  exit 1
+fi
 
 if [[ -n "${DIAG_LADDER:-}" ]]; then
+  : "${MODEL:?set MODEL to a config.yaml shorthand (from --print-jobs or a fit hand flag)}"
+  : "${SEED_TO:?set SEED_TO so a missing flag cannot run the full seed grid as technical-smoke}"
+  : "${TOPOLOGY:?set TOPOLOGY so a missing flag cannot run every topology as technical-smoke}"
+  export MODEL
   if [[ -n "${CAMPAIGN:-}" ]]; then
     echo "DIAG_LADDER cannot be combined with CAMPAIGN; the ladder sets one campaign per cell" >&2
     exit 1
@@ -111,8 +178,18 @@ if [[ -n "${DIAG_LADDER:-}" ]]; then
     fi
   fi
   ARTIFACT_ROOT="${SCRATCH}/runs"
-else
-  CAMPAIGN="${CAMPAIGN:-technical-smoke}"
+elif [[ "${HAS_TASK}" -eq 1 ]]; then
+  if [[ -z "${COUNTED_MODEL}" ]]; then
+    echo "counted job requires --model" >&2
+    exit 1
+  fi
+  if [[ -z "${COUNTED_CAMPAIGN}" ]]; then
+    echo "counted job requires --campaign" >&2
+    exit 1
+  fi
+  MODEL="${COUNTED_MODEL}"
+  CAMPAIGN="${COUNTED_CAMPAIGN}"
+  export MODEL
   if [[ "${CAMPAIGN}" == diag-ashery-* || "${CAMPAIGN}" == diag-h12-* || "${CAMPAIGN}" == diag-n48-* || "${CAMPAIGN}" == diag-strings-* ]]; then
     : "${DIAG_N:?set DIAG_N for this diag campaign}"
     : "${DIAG_H:?set DIAG_H for this diag campaign}"
@@ -120,7 +197,14 @@ else
     : "${DIAG_DECODE:?set DIAG_DECODE for this diag campaign}"
     : "${DIAG_CAP:?set DIAG_CAP for this diag campaign}"
   fi
-  ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"
+  if [[ "${HAS_ARTIFACT_ROOT}" -eq 1 ]]; then
+    ARTIFACT_ROOT="${COUNTED_ARTIFACT_ROOT}"
+  else
+    ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"
+  fi
+else
+  echo "submit requires --task on the counted path, or DIAG_LADDER" >&2
+  exit 1
 fi
 
 mkdir -p "${ARTIFACT_ROOT}" "$(dirname "${VLLM_LOG}")" "$(dirname "${VENV}")"
@@ -365,22 +449,20 @@ run_counted_slice() {
   local cell_root="${SCRATCH}/runs/${CAMPAIGN}"
   mkdir -p "${cell_root}"
   echo "[diag-ladder] campaign=${CAMPAIGN} N=${DIAG_N:-} H=${DIAG_H:-} pool=${DIAG_POOL:-} decode=${DIAG_DECODE:-} cap=${DIAG_CAP:-}"
+  local program="${PROGRAM:-emergence}"
+  local seed_from="${SEED_FROM:-0}"
+  local task_spec="${program}:${TOPOLOGY}:${seed_from}-${SEED_TO}"
+  if [[ "${program}" == cm ]]; then
+    task_spec="${task_spec}:k=${K}"
+  fi
   local runner_args=(
     "${PYTHON}" run_main.py
     --model "${MODEL}"
-    --program "${PROGRAM:-emergence}"
     --artifact-root "${cell_root}"
     --base-url "${BASE_URL}"
     --campaign "${CAMPAIGN}"
+    --task "${task_spec}"
   )
-  if [[ -n "${SEED_FROM:-}" ]]; then
-    runner_args+=(--seed-from "${SEED_FROM}")
-  fi
-  runner_args+=(--seed-to "${SEED_TO}")
-  runner_args+=(--topology "${TOPOLOGY}")
-  if [[ -n "${K:-}" ]]; then
-    runner_args+=(--k "${K}")
-  fi
   "${runner_args[@]}" &
   RUNNER_PID=$!
   start_metrics_scrape "${RUNNER_PID}"
@@ -418,21 +500,12 @@ if [[ -n "${DIAG_LADDER:-}" ]]; then
   exit "${ladder_rc}"
 fi
 
-RUNNER_ARGS=(
-  "${PYTHON}" run_main.py
-  --model "${MODEL}"
-  --program "${PROGRAM:-emergence}"
-  --artifact-root "${ARTIFACT_ROOT}"
-  --base-url "${BASE_URL}"
-  --campaign "${CAMPAIGN}"
-)
-if [[ -n "${SEED_FROM:-}" ]]; then
-  RUNNER_ARGS+=(--seed-from "${SEED_FROM}")
+RUNNER_ARGS=("${PYTHON}" run_main.py "$@")
+if [[ "${HAS_BASE_URL}" -eq 0 ]]; then
+  RUNNER_ARGS+=(--base-url "${BASE_URL}")
 fi
-RUNNER_ARGS+=(--seed-to "${SEED_TO}")
-RUNNER_ARGS+=(--topology "${TOPOLOGY}")
-if [[ -n "${K:-}" ]]; then
-  RUNNER_ARGS+=(--k "${K}")
+if [[ "${HAS_ARTIFACT_ROOT}" -eq 0 ]]; then
+  RUNNER_ARGS+=(--artifact-root "${ARTIFACT_ROOT}")
 fi
 
 "${RUNNER_ARGS[@]}" &

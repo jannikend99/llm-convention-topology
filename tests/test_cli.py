@@ -16,10 +16,22 @@ class DirtyGitCliTests(unittest.TestCase):
 
     def test_run_main_slice_refuses_dirty_tree(self):
         with patch("run_main.require_clean_worktree", side_effect=DirtyWorktreeError("dirty")):
-            self.assertEqual(run_main.main(["--model", "mock", "--program", "emergence", "--seed-from", "0", "--seed-to", "1"]), 2)
+            self.assertEqual(
+                run_main.main(
+                    [
+                        "--model",
+                        "mock",
+                        "--campaign",
+                        "technical-smoke",
+                        "--task",
+                        "emergence:mixing:0-1",
+                    ]
+                ),
+                2,
+            )
 
-    def test_run_main_print_jobs_does_not_need_clean_tree(self):
-        code = run_main.main(["--print-jobs"])
+    def test_run_main_print_queue_does_not_need_clean_tree(self):
+        code = run_main.main(["--print-queue", "--task", "emergence:mixing:0-1"])
         self.assertEqual(code, 0)
 
     def test_counted_slice_installs_sigterm(self):
@@ -83,11 +95,8 @@ class DirtyGitCliTests(unittest.TestCase):
                     run_slice_async(
                         config,
                         spec,
-                        program="emergence",
+                        cells=[{"program": "emergence", "topology": "mixing", "cm_k": None, "seed_index": 0}],
                         campaign_dir=root,
-                        topology="mixing",
-                        seed_from=0,
-                        seed_to=1,
                     )
                 )
             mocked.assert_not_called()
@@ -143,11 +152,15 @@ class DirtyGitCliTests(unittest.TestCase):
                             run_slice_async(
                                 config,
                                 spec,
-                                program="emergence",
+                                cells=[
+                                    {
+                                        "program": "emergence",
+                                        "topology": "mixing",
+                                        "cm_k": None,
+                                        "seed_index": 0,
+                                    }
+                                ],
                                 campaign_dir=root,
-                                topology="mixing",
-                                seed_from=0,
-                                seed_to=1,
                             )
                         )
                     mocked.assert_not_called()
@@ -182,11 +195,16 @@ class DirtyGitCliTests(unittest.TestCase):
                     statuses = await run_slice_async(
                         config,
                         spec,
-                        program="emergence",
+                        cells=[
+                            {
+                                "program": "emergence",
+                                "topology": "mixing",
+                                "cm_k": None,
+                                "seed_index": i,
+                            }
+                            for i in range(2)
+                        ],
                         campaign_dir=root,
-                        topology="mixing",
-                        seed_from=0,
-                        seed_to=2,
                     )
             self.assertEqual(statuses, ["failed", "failed"])
             return tracker["peak"]
@@ -224,9 +242,23 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn("--max-model-len", job)
         self.assertIn("--max-num-seqs", job)
         self.assertIn("--tensor-parallel-size", job)
-        self.assertIn('CAMPAIGN="${CAMPAIGN:-technical-smoke}"', job)
+        self.assertNotIn('CAMPAIGN="${CAMPAIGN:-technical-smoke}"', job)
         self.assertIn('ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"', job)
         self.assertIn('--campaign "${CAMPAIGN}"', job)
+        self.assertIn('run_main.py "$@"', job)
+        self.assertIn("Parse argv after `--`", job)
+        self.assertIn("#SBATCH -t 1-00:00:00", job)
+        self.assertNotIn("#SBATCH -t 1:00:00", job)
+        self.assertNotIn("#SBATCH -t 12:00:00", job)
+        self.assertIn("cannot be combined with --task", job)
+        counted_prefix = job.split("if [[ -n \"${DIAG_LADDER:-}\" ]]; then", 1)[0]
+        self.assertNotIn('SEED_TO:?', counted_prefix)
+        self.assertNotIn('TOPOLOGY:?', counted_prefix)
+        self.assertNotIn('MODEL:?', counted_prefix)
+        counted_tail = job.split("exit \"${ladder_rc}\"", 1)[-1]
+        self.assertNotIn("--seed-to", counted_tail)
+        self.assertNotIn("--topology", counted_tail)
+        self.assertNotIn("--program", counted_tail)
         self.assertIn("VLLM_PIN", job)
         self.assertIn("v0.28.0", job)
         self.assertIn("VLLM_MODULE", job)
@@ -258,8 +290,6 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn("SLURM_GPU_TYPE", job)
         self.assertNotIn("nvidia-smi", job)
         self.assertNotIn("nvidia_smi", job)
-        self.assertIn('SEED_TO:?', job)
-        self.assertIn('TOPOLOGY:?', job)
         self.assertIn("# Wait until /v1/models answers", job)
         self.assertIn("VLLM_EXTRA", job)
         self.assertIn("--enable-log-requests", job)
@@ -304,12 +334,10 @@ class DirtyGitCliTests(unittest.TestCase):
                 [
                     "--model",
                     "nemotron35_lightning",
-                    "--program",
-                    "emergence",
-                    "--seed-from",
-                    "0",
-                    "--seed-to",
-                    "0",
+                    "--campaign",
+                    "technical-smoke",
+                    "--task",
+                    "emergence:mixing:0-1",
                     "--base-url",
                     "http://127.0.0.1:12345/v1",
                 ]
@@ -336,14 +364,10 @@ class DirtyGitCliTests(unittest.TestCase):
                     [
                         "--model",
                         "mock",
-                        "--program",
-                        "emergence",
-                        "--seed-from",
-                        "0",
-                        "--seed-to",
-                        "0",
                         "--campaign",
                         "pilot-run",
+                        "--task",
+                        "emergence:mixing:0-1",
                         "--artifact-root",
                         str(root),
                     ]
@@ -351,6 +375,396 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(captured["campaign"], "pilot-run")
         self.assertEqual(Path(captured["campaign_dir"]), root)
+
+    def test_run_main_ignores_experiment_env_when_cli_set(self):
+        captured = {}
+
+        async def fake_slice(config, model_spec, **kwargs):
+            captured["campaign"] = config["run"]["campaign"]
+            captured["cells"] = list(kwargs["cells"])
+            captured["model"] = model_spec.shorthand
+            return []
+
+        env = {
+            "CAMPAIGN": "from-env",
+            "MODEL": "gemma4_31b",
+            "PROGRAM": "cm",
+            "SEED_FROM": "10",
+            "SEED_TO": "20",
+            "TOPOLOGY": "lattice",
+            "K": "8",
+        }
+        with patch.dict("os.environ", env, clear=False):
+            with patch("run_main.require_clean_worktree"), patch(
+                "run_main.run_slice_async", side_effect=fake_slice
+            ):
+                code = run_main.main(
+                    [
+                        "--model",
+                        "mock",
+                        "--campaign",
+                        "technical-smoke",
+                        "--task",
+                        "emergence:mixing:0-2",
+                    ]
+                )
+        self.assertEqual(code, 0)
+        self.assertEqual(captured["campaign"], "technical-smoke")
+        self.assertEqual(captured["model"], "mock")
+        self.assertEqual(
+            captured["cells"],
+            [
+                {"program": "emergence", "topology": "mixing", "cm_k": None, "seed_index": 0},
+                {"program": "emergence", "topology": "mixing", "cm_k": None, "seed_index": 1},
+            ],
+        )
+
+    def test_run_main_two_cells_without_experiment_env(self):
+        captured = {}
+
+        async def fake_slice(config, model_spec, **kwargs):
+            captured["cells"] = list(kwargs["cells"])
+            captured["campaign"] = config["run"]["campaign"]
+            captured["model"] = model_spec.shorthand
+            return ["completed", "completed"]
+
+        cleared = {
+            "CAMPAIGN": "",
+            "MODEL": "",
+            "PROGRAM": "",
+            "SEED_FROM": "",
+            "SEED_TO": "",
+            "TOPOLOGY": "",
+            "K": "",
+        }
+        with patch.dict("os.environ", cleared, clear=False):
+            with patch("run_main.require_clean_worktree"), patch(
+                "run_main.run_slice_async", side_effect=fake_slice
+            ):
+                code = run_main.main(
+                    [
+                        "--model",
+                        "mock",
+                        "--campaign",
+                        "technical-smoke",
+                        "--task",
+                        "emergence:mixing:0-2",
+                    ]
+                )
+        self.assertEqual(code, 0)
+        self.assertEqual(captured["campaign"], "technical-smoke")
+        self.assertEqual(captured["model"], "mock")
+        self.assertEqual(len(captured["cells"]), 2)
+        self.assertEqual(
+            [c["seed_index"] for c in captured["cells"]],
+            [0, 1],
+        )
+
+    def test_run_main_one_asyncio_run(self):
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parent.parent / "run_main.py").read_text(encoding="utf-8")
+        self.assertEqual(source.count("asyncio.run("), 1)
+        self.assertNotIn("for program in", source)
+
+    def test_two_tasks_share_one_slot_pool(self):
+        import asyncio
+        from dataclasses import replace
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+
+        from convention_topology.config import load_config, resolve_model
+        from convention_topology.orchestration import flatten_tasks, parse_task, run_slice_async
+
+        started: list[str] = []
+        concurrent_topos: list[set[str]] = []
+        live: set[str] = set()
+
+        async def delayed_execute(cfg, *_args, **_kwargs):
+            topo = cfg.topology
+            live.add(topo)
+            started.append(topo)
+            concurrent_topos.append(set(live))
+            try:
+                await asyncio.sleep(0.08)
+            finally:
+                live.discard(topo)
+
+        cells = flatten_tasks(
+            [
+                parse_task("emergence:mixing:0-2"),
+                parse_task("emergence:lattice:0-2"),
+            ]
+        )
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = load_config()
+            spec = replace(resolve_model(config, "mock"), max_concurrent_runs=3)
+            with patch("convention_topology.orchestration.execute_run_async", side_effect=delayed_execute):
+                statuses = asyncio.run(
+                    run_slice_async(config, spec, cells=cells, campaign_dir=root)
+                )
+        self.assertEqual(len(statuses), 4)
+        self.assertEqual(statuses, ["failed", "failed", "failed", "failed"])
+        self.assertTrue(any(len(group) == 2 and group == {"mixing", "lattice"} for group in concurrent_topos))
+
+    def test_pilot_env_ignored_on_experiment_campaign(self):
+        captured = {}
+
+        async def fake_slice(config, model_spec, **kwargs):
+            captured["cap"] = config["protocol"]["cap_phase1"]
+            captured["horizon"] = config["protocol"]["phase2_horizon"]
+            return []
+
+        env = {"PILOT_CAP_PHASE1": "400", "PILOT_PHASE2_HORIZON": "50"}
+        with patch.dict("os.environ", env, clear=False):
+            with patch("run_main.require_clean_worktree"), patch(
+                "run_main.run_slice_async", side_effect=fake_slice
+            ):
+                code = run_main.main(
+                    [
+                        "--model",
+                        "mock",
+                        "--campaign",
+                        "experiment",
+                        "--task",
+                        "emergence:mixing:0-1",
+                    ]
+                )
+        self.assertEqual(code, 0)
+        self.assertEqual(captured["cap"], 5000)
+        self.assertEqual(captured["horizon"], 1000)
+
+    def test_in_progress_sidecar_calls_execute_run(self):
+        import asyncio
+        import json
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import AsyncMock, patch
+
+        from convention_topology.campaign import ensure_campaign_files
+        from convention_topology.config import load_config, resolve_model
+        from convention_topology.orchestration import run_slice_async
+        from convention_topology.persistence import build_run_id, encode_run_key, run_paths
+        from convention_topology.run import build_run_config
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = load_config()
+            files = ensure_campaign_files(root, config)
+            spec = resolve_model(config, "mock")
+            cfg = build_run_config(
+                config,
+                spec,
+                program="emergence",
+                topology="mixing",
+                seed_index=0,
+                cm_k=None,
+                pool_labels=files["pool"]["labels"],
+                pool_sha256=files["pool"]["sha256"],
+                code_commit="test",
+                artifact_root=str(root),
+            )
+            run_key = encode_run_key(
+                campaign=cfg.campaign,
+                program=cfg.program,
+                model_id=cfg.model_id,
+                topology=cfg.topology,
+                cm_k=cfg.cm_k,
+                seed_index=cfg.seed_index,
+            )
+            paths = run_paths(root, cfg.model_shorthand, cfg.topology, build_run_id(run_key))
+            paths.meta_path.parent.mkdir(parents=True, exist_ok=True)
+            paths.meta_path.write_text(json.dumps({"run_status": "in_progress"}), encoding="utf-8")
+            with patch(
+                "convention_topology.orchestration.execute_run_async", new_callable=AsyncMock
+            ) as mocked:
+                asyncio.run(
+                    run_slice_async(
+                        config,
+                        spec,
+                        cells=[{"program": "emergence", "topology": "mixing", "cm_k": None, "seed_index": 0}],
+                        campaign_dir=root,
+                    )
+                )
+            mocked.assert_called_once()
+
+    def test_interrupted_sidecar_resumes_same_run_id(self):
+        import asyncio
+        import json
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import AsyncMock, patch
+
+        from convention_topology.campaign import ensure_campaign_files
+        from convention_topology.config import load_config, resolve_model
+        from convention_topology.orchestration import run_slice_async
+        from convention_topology.persistence import build_run_id, encode_run_key, run_paths
+        from convention_topology.run import build_run_config
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = load_config()
+            files = ensure_campaign_files(root, config)
+            spec = resolve_model(config, "mock")
+            cfg = build_run_config(
+                config,
+                spec,
+                program="emergence",
+                topology="mixing",
+                seed_index=0,
+                cm_k=None,
+                pool_labels=files["pool"]["labels"],
+                pool_sha256=files["pool"]["sha256"],
+                code_commit="test",
+                artifact_root=str(root),
+            )
+            run_key = encode_run_key(
+                campaign=cfg.campaign,
+                program=cfg.program,
+                model_id=cfg.model_id,
+                topology=cfg.topology,
+                cm_k=cfg.cm_k,
+                seed_index=cfg.seed_index,
+            )
+            expected_id = build_run_id(run_key)
+            paths = run_paths(root, cfg.model_shorthand, cfg.topology, expected_id)
+            paths.meta_path.parent.mkdir(parents=True, exist_ok=True)
+            paths.meta_path.write_text(
+                json.dumps({"run_status": "interrupted", "run_id": expected_id}),
+                encoding="utf-8",
+            )
+            with patch(
+                "convention_topology.orchestration.execute_run_async", new_callable=AsyncMock
+            ) as mocked:
+                asyncio.run(
+                    run_slice_async(
+                        config,
+                        spec,
+                        cells=[{"program": "emergence", "topology": "mixing", "cm_k": None, "seed_index": 0}],
+                        campaign_dir=root,
+                    )
+                )
+            mocked.assert_called_once()
+            resumed_cfg = mocked.call_args.args[0]
+            resumed_key = encode_run_key(
+                campaign=resumed_cfg.campaign,
+                program=resumed_cfg.program,
+                model_id=resumed_cfg.model_id,
+                topology=resumed_cfg.topology,
+                cm_k=resumed_cfg.cm_k,
+                seed_index=resumed_cfg.seed_index,
+            )
+            self.assertEqual(build_run_id(resumed_key), expected_id)
+
+    def test_heartbeat_written_for_mock_slice(self):
+        import asyncio
+        import json
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+
+        async def delayed_execute(*_args, **_kwargs):
+            await asyncio.sleep(0.05)
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch.dict("os.environ", {"SLURM_JOB_ID": "4242", "SLURM_TIMELIMIT": "1-00:00:00"}, clear=False):
+                with patch("run_main.require_clean_worktree"), patch(
+                    "convention_topology.orchestration.execute_run_async",
+                    side_effect=delayed_execute,
+                ):
+                    code = run_main.main(
+                        [
+                            "--model",
+                            "mock",
+                            "--campaign",
+                            "technical-smoke",
+                            "--task",
+                            "emergence:mixing:0-1",
+                            "--artifact-root",
+                            str(root),
+                        ]
+                    )
+            self.assertEqual(code, 0)
+            live = root / "jobs" / "4242.live.json"
+            self.assertTrue(live.is_file())
+            payload = json.loads(live.read_text(encoding="utf-8"))
+            for key in (
+                "model_shorthand",
+                "tasks",
+                "live_runs",
+                "in_flight_http",
+                "max_concurrent_runs",
+                "started_at",
+                "heartbeat_at",
+                "live_run_ids",
+                "queued_run_ids",
+            ):
+                self.assertIn(key, payload)
+            self.assertEqual(payload["model_shorthand"], "mock")
+            self.assertEqual(payload["tasks"], ["emergence:mixing:0-1"])
+            self.assertEqual(payload["slurm_timelimit"], "1-00:00:00")
+            self.assertIsInstance(payload["in_flight_http"], int)
+            self.assertIsInstance(payload["live_run_ids"], list)
+            self.assertIsInstance(payload["queued_run_ids"], list)
+            self.assertFalse(list(root.rglob("*.fill.jsonl")))
+
+    def test_local_heartbeat_job_id_uses_pid(self):
+        import asyncio
+        import json
+        import os
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+
+        async def delayed_execute(*_args, **_kwargs):
+            await asyncio.sleep(0.01)
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env_patch = {}
+            if "SLURM_JOB_ID" in os.environ:
+                env_patch["SLURM_JOB_ID"] = ""
+            if "SLURM_TIMELIMIT" in os.environ:
+                env_patch["SLURM_TIMELIMIT"] = ""
+            with patch.dict("os.environ", env_patch, clear=False):
+                with patch("run_main.require_clean_worktree"), patch(
+                    "convention_topology.orchestration.execute_run_async",
+                    side_effect=delayed_execute,
+                ):
+                    code = run_main.main(
+                        [
+                            "--model",
+                            "mock",
+                            "--campaign",
+                            "technical-smoke",
+                            "--task",
+                            "emergence:mixing:0-1",
+                            "--artifact-root",
+                            str(root),
+                        ]
+                    )
+            self.assertEqual(code, 0)
+            jobs = list((root / "jobs").glob("local-*.live.json"))
+            self.assertEqual(len(jobs), 1)
+            payload = json.loads(jobs[0].read_text(encoding="utf-8"))
+            self.assertIn("in_flight_http", payload)
+            self.assertNotIn("slurm_timelimit", payload)
+
+    def test_no_yen_scratch_user_in_engine(self):
+        from pathlib import Path
+
+        hits = []
+        engine = Path(__file__).resolve().parent.parent / "convention_topology"
+        for path in engine.rglob("*"):
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if "/scratch/shared/jendress" in text:
+                hits.append(str(path))
+        self.assertEqual(hits, [])
 
     def test_run_main_ashery_without_diag_env_fails(self):
         cleared = {
@@ -367,12 +781,8 @@ class DirtyGitCliTests(unittest.TestCase):
                         [
                             "--model",
                             "mock",
-                            "--program",
-                            "emergence",
-                            "--seed-from",
-                            "0",
-                            "--seed-to",
-                            "1",
+                            "--task",
+                            "emergence:mixing:0-1",
                             "--campaign",
                             "diag-ashery-parse-mock",
                         ]
@@ -394,12 +804,8 @@ class DirtyGitCliTests(unittest.TestCase):
                         [
                             "--model",
                             "mock",
-                            "--program",
-                            "emergence",
-                            "--seed-from",
-                            "0",
-                            "--seed-to",
-                            "1",
+                            "--task",
+                            "emergence:mixing:0-1",
                             "--campaign",
                             "diag-h12-parse-mock",
                         ]
@@ -429,12 +835,8 @@ class DirtyGitCliTests(unittest.TestCase):
                     [
                         "--model",
                         "mock",
-                        "--program",
-                        "emergence",
-                        "--seed-from",
-                        "0",
-                        "--seed-to",
-                        "1",
+                        "--task",
+                        "emergence:mixing:0-1",
                         "--campaign",
                         "diag-ashery-parse-mock",
                     ]
@@ -469,12 +871,8 @@ class DirtyGitCliTests(unittest.TestCase):
                     [
                         "--model",
                         "mock",
-                        "--program",
-                        "emergence",
-                        "--seed-from",
-                        "0",
-                        "--seed-to",
-                        "1",
+                        "--task",
+                        "emergence:mixing:0-1",
                         "--campaign",
                         "diag-h12-parse-mock",
                     ]
@@ -508,12 +906,8 @@ class DirtyGitCliTests(unittest.TestCase):
                     [
                         "--model",
                         "mock",
-                        "--program",
-                        "emergence",
-                        "--seed-from",
-                        "0",
-                        "--seed-to",
-                        "1",
+                        "--task",
+                        "emergence:mixing:0-1",
                         "--campaign",
                         "diag-tech-mock",
                     ]
@@ -529,18 +923,21 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn("json_schema=cfg.json_schema", source)
         self.assertIn("limiter=asyncio.Semaphore(cfg.in_flight_limit)", source)
 
-    def test_run_main_print_jobs_emits_hf_id_and_shorthand(self):
-        from io import StringIO
-        from contextlib import redirect_stdout
-
-        buf = StringIO()
-        with redirect_stdout(buf):
-            code = run_main.main(["--print-jobs"])
-        self.assertEqual(code, 0)
-        text = buf.getvalue()
-        self.assertIn("nemotron35_lightning", text)
-        self.assertIn("nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16", text)
-        self.assertIn("model_id=", text)
+    def test_run_main_rejects_legacy_program_flags(self):
+        with self.assertRaises(SystemExit) as raised:
+            run_main.main(
+                [
+                    "--model",
+                    "mock",
+                    "--campaign",
+                    "technical-smoke",
+                    "--program",
+                    "emergence",
+                    "--seed-to",
+                    "1",
+                ]
+            )
+        self.assertNotEqual(raised.exception.code, 0)
 
     def test_run_one_refuses_dirty_tree(self):
         with patch("run_one.require_clean_worktree", side_effect=DirtyWorktreeError("dirty")):

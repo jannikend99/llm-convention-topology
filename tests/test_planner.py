@@ -1,42 +1,158 @@
 from __future__ import annotations
 
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 
-from convention_topology.config import load_config
-from convention_topology.orchestration import format_job_line, print_jobs, seed_slices
+from convention_topology.config import K_SET, TOPOLOGIES, load_config
+from convention_topology.orchestration import (
+    TaskSpecError,
+    flatten_tasks,
+    parse_task,
+    seed_slices,
+)
+import run_main
 
 
-class PlannerTests(unittest.TestCase):
-    def test_slices_disjoint_and_tile(self):
-        ranges = seed_slices(32, 8)
-        covered = []
-        for start, end in ranges:
-            chunk = list(range(start, end))
-            self.assertTrue(set(covered).isdisjoint(chunk))
-            covered.extend(chunk)
-        self.assertEqual(covered, list(range(32)))
+class TaskGrammarTests(unittest.TestCase):
+    def test_parse_emergence_half_open(self):
+        spec = parse_task("emergence:mixing:0-2")
+        self.assertEqual(spec.program, "emergence")
+        self.assertEqual(spec.topologies, ("mixing",))
+        self.assertEqual(spec.seed_from, 0)
+        self.assertEqual(spec.seed_to, 2)
+        self.assertIsNone(spec.k_values)
+        cells = flatten_tasks([spec])
+        self.assertEqual(
+            [(c["topology"], c["cm_k"], c["seed_index"]) for c in cells],
+            [("mixing", None, 0), ("mixing", None, 1)],
+        )
 
-    def test_print_jobs_compose_grid(self):
+    def test_parse_cm_k_list(self):
+        spec = parse_task("cm:mixing,lattice:0-1:k=2,4")
+        self.assertEqual(spec.program, "cm")
+        self.assertEqual(spec.topologies, ("mixing", "lattice"))
+        self.assertEqual(spec.k_values, (2, 4))
+        cells = flatten_tasks([spec])
+        keys = {(c["topology"], c["cm_k"], c["seed_index"]) for c in cells}
+        self.assertEqual(keys, {("mixing", 2, 0), ("mixing", 4, 0), ("lattice", 2, 0), ("lattice", 4, 0)})
+
+    def test_emergence_with_k_fails(self):
+        with self.assertRaises(TaskSpecError):
+            parse_task("emergence:mixing:0-2:k=2")
+
+    def test_cm_without_k_fails(self):
+        with self.assertRaises(TaskSpecError):
+            parse_task("cm:mixing:0-2")
+
+    def test_unknown_program_topology_k_fail(self):
+        with self.assertRaises(TaskSpecError):
+            parse_task("study1:mixing:0-1")
+        with self.assertRaises(TaskSpecError):
+            parse_task("emergence:complete:0-1")
+        with self.assertRaises(TaskSpecError):
+            parse_task("cm:mixing:0-1:k=3")
+
+    def test_omitted_topology_does_not_expand_all(self):
+        with self.assertRaises(TaskSpecError):
+            parse_task("emergence::0-1")
+        with self.assertRaises(TaskSpecError):
+            parse_task("emergence:all:0-1")
+        spec = parse_task("emergence:mixing:0-1")
+        self.assertNotEqual(set(spec.topologies), set(TOPOLOGIES))
+
+    def test_omitted_k_on_cm_does_not_expand_all(self):
+        with self.assertRaises(TaskSpecError):
+            parse_task("cm:mixing:0-1:k=")
+        self.assertEqual(K_SET, (2, 4, 6, 8, 10, 12))
+
+    def test_duplicate_cells_fail(self):
+        a = parse_task("emergence:mixing:0-2")
+        b = parse_task("emergence:mixing:1-3")
+        with self.assertRaises(TaskSpecError):
+            flatten_tasks([a, b])
+
+
+class PrintQueueCliTests(unittest.TestCase):
+    def test_print_jobs_is_deprecation_error(self):
+        with self.assertRaises(SystemExit) as raised:
+            run_main.main(["--print-jobs"])
+        self.assertNotEqual(raised.exception.code, 0)
+
+    def test_print_queue_expands_tasks_only(self):
+        buf = StringIO()
+        with redirect_stdout(buf):
+            code = run_main.main(
+                [
+                    "--print-queue",
+                    "--task",
+                    "emergence:mixing:0-32",
+                    "--task",
+                    "cm:lattice:0-2:k=2",
+                ]
+            )
+        self.assertEqual(code, 0)
+        text = buf.getvalue()
+        self.assertIn("emergence", text)
+        self.assertIn("mixing", text)
+        self.assertIn("total_cells=34", text)
+        self.assertNotIn("--seed-from", text)
+        self.assertNotIn("gpus=", text)
+
+    def test_print_queue_ignores_seed_indices_per_slice(self):
         config = load_config()
-        jobs = print_jobs(config)
-        self.assertTrue(jobs)
-        by_group: dict[tuple[str, str], list[tuple[int, int]]] = {}
-        for job in jobs:
-            by_group.setdefault((job.model, job.program), []).append((job.seed_from, job.seed_to))
-            line = format_job_line(job)
-            self.assertIn("--seed-from", line)
-            self.assertIn(f"--model {job.model}", line)
-            self.assertIn(f"model_id={job.model_id}", line)
-            self.assertIn("/", job.model_id)
-        for (_model, _program), ranges in by_group.items():
-            covered = []
-            for start, end in ranges:
-                self.assertTrue(set(covered).isdisjoint(range(start, end)))
-                covered.extend(range(start, end))
-            self.assertEqual(sorted(covered), list(range(32)))
-        models = {job.model for job in jobs}
-        self.assertEqual(models, set(config["jobs"]["models"]))
+        slice_size = config["models"]["mock"]["seed_indices_per_slice"]["emergence"]
+        self.assertGreater(slice_size, 1)
+        spec = parse_task("emergence:mixing:0-32")
+        cells = flatten_tasks([spec])
+        self.assertEqual(len(cells), 32)
+        tiled = seed_slices(32, slice_size)
+        self.assertGreater(len(tiled), 1)
 
-    def test_bad_slice_size_raises(self):
-        with self.assertRaises(ValueError):
-            seed_slices(32, 0)
+    def test_queue_path_does_not_call_seed_slices_or_print_jobs(self):
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parent.parent / "run_main.py").read_text(encoding="utf-8")
+        self.assertNotIn("seed_slices(", source)
+        self.assertNotIn("print_jobs(", source)
+        self.assertIn("flatten_tasks(", source)
+
+    def test_task_omitted_fails(self):
+        with self.assertRaises(SystemExit) as raised:
+            run_main.main(["--model", "mock", "--campaign", "technical-smoke"])
+        self.assertNotEqual(raised.exception.code, 0)
+
+    def test_campaign_omitted_fails_despite_config_default(self):
+        with self.assertRaises(SystemExit) as raised:
+            run_main.main(["--model", "mock", "--task", "emergence:mixing:0-1"])
+        self.assertNotEqual(raised.exception.code, 0)
+        self.assertEqual(load_config()["run"]["campaign"], "experiment")
+
+    def test_model_omitted_on_run_fails(self):
+        with self.assertRaises(SystemExit) as raised:
+            run_main.main(["--campaign", "technical-smoke", "--task", "emergence:mixing:0-1"])
+        self.assertNotEqual(raised.exception.code, 0)
+
+    def test_print_queue_without_campaign_ok(self):
+        buf = StringIO()
+        with redirect_stdout(buf):
+            code = run_main.main(["--print-queue", "--task", "emergence:mixing:0-1"])
+        self.assertEqual(code, 0)
+        self.assertIn("total_cells=1", buf.getvalue())
+
+    def test_duplicate_tasks_fail_before_model_resolve(self):
+        with self.assertRaises(SystemExit) as raised:
+            run_main.main(
+                [
+                    "--print-queue",
+                    "--task",
+                    "emergence:mixing:0-2",
+                    "--task",
+                    "emergence:mixing:1-3",
+                ]
+            )
+        self.assertNotEqual(raised.exception.code, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
