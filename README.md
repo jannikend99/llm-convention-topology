@@ -20,13 +20,21 @@ Counted path: local OpenAI-compatible vLLM (`provider: openai_compat`) or `mock`
 
 ```bash
 python -m pytest tests -q
-python run_main.py --print-jobs
-python run_main.py --model mock --program emergence --campaign technical-smoke --artifact-root /tmp/campaign --seed-from 0 --seed-to 1
+python run_main.py --print-queue --task emergence:mixing:0-32
+python run_main.py --model mock --campaign technical-smoke --artifact-root /tmp/campaign \
+  --task emergence:mixing:0-1
 python run_one.py --program emergence --model mock --topology mixing --seed-index 0 --artifact-root /tmp/campaign
 ```
 
-`--print-jobs` prints the confirmatory grid (shorthand + HF `model_id`). Fit/timing jobs use `--campaign pilot-run` so artifacts are not `experiment`. `config.yaml` `run.campaign: experiment` stays the confirmatory default.
+`--print-queue` prints the flattened `--task` list. `--print-jobs` is a deprecation error. Fit/timing jobs use `--campaign pilot-run` so artifacts are not `experiment`. Queue jobs require explicit `--campaign`.
 
-Yen: clone/pull `/scratch/shared/jendress/exp/llm-convention-topology`, then `sbatch jobs/thesis_vllm.slurm` from the repo root in the Jupyter Terminal. First live campaign is `technical-smoke`. Operator packet: thesis `specs/yen-configuration.md`. This package does not submit jobs. `notebooks/yen_jobs.ipynb` is archived.
+Yen: clone/pull `/scratch/shared/jendress/exp/llm-convention-topology`, then from the repo root in the Jupyter Terminal:
+
+```bash
+sbatch --export=ALL jobs/thesis_vllm.slurm -- \
+  --campaign technical-smoke --model gemma4_e2b --task emergence:mixing:0-1
+```
+
+Operator packet: thesis `specs/yen-configuration.md` and `specs/counted-job-queue.md`. This package does not submit jobs. `notebooks/yen_jobs.ipynb` is archived.
 
 Campaign artifacts: `data/runs/<campaign>/` on a laptop (gitignored), or `--artifact-root` on scratch (`/scratch/shared/jendress/runs/<campaign>/`; do not append the campaign name twice).
