@@ -15,9 +15,11 @@ from typing import Any, Mapping, TextIO
 from rich.console import Group, RenderableType
 from rich.live import Live
 from rich.panel import Panel
+from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
+from convention_topology.config import ConfigError, load_config
 from convention_topology.orchestration import TaskSpecError, flatten_tasks, parse_task
 
 
@@ -70,8 +72,52 @@ def _is_true(value: Any) -> bool:
     return value is True
 
 
-def _format_unknown(value: int | None) -> str:
+def _format_unknown(value: int | float | None) -> str:
     return "unknown" if value is None else str(value)
+
+
+def _load_protocol_caps() -> tuple[int | None, int | None]:
+    try:
+        run = load_config()["run"]
+    except (ConfigError, OSError, KeyError, TypeError):
+        return None, None
+    cap = run.get("cap_phase1")
+    horizon = run.get("phase2_horizon")
+    cap_i = int(cap) if isinstance(cap, int) and cap > 0 else None
+    horizon_i = int(horizon) if isinstance(horizon, int) and horizon > 0 else None
+    return cap_i, horizon_i
+
+
+def _interaction_t(row: Mapping[str, Any]) -> float | None:
+    for key in ("n_interactions", "last_checkpoint_t"):
+        value = row.get(key)
+        if isinstance(value, (int, float)):
+            return float(value)
+    return None
+
+
+def _row_cap(
+    row: Mapping[str, Any],
+    *,
+    cap_phase1: int | None,
+    phase2_horizon: int | None,
+) -> int | None:
+    if row.get("program") == "cm":
+        stored = row.get("phase2_horizon")
+        if isinstance(stored, (int, float)) and stored > 0:
+            return int(stored)
+        return phase2_horizon
+    return cap_phase1
+
+
+def _progress_cell(completed: float | None, total: int | None) -> RenderableType:
+    if completed is None or total is None or total <= 0:
+        return Text("-")
+    clipped = min(max(completed, 0.0), float(total))
+    return Group(
+        ProgressBar(total=total, completed=clipped, width=24),
+        Text(f"{completed:.0f}/{total}"),
+    )
 
 
 def _elapsed_label(started_at: str | None, now: datetime) -> str | None:
@@ -116,6 +162,8 @@ class HealthSnapshot:
     sidecars: list[dict[str, Any]] = field(default_factory=list)
     recent_failures: list[dict[str, Any]] = field(default_factory=list)
     verdict: str = "OK"
+    cap_phase1: int | None = None
+    phase2_horizon: int | None = None
 
     @property
     def finished(self) -> int:
@@ -227,6 +275,8 @@ def read_health_snapshot(
     campaign_dir: Path,
     model_shorthand: str,
     now: datetime | None = None,
+    cap_phase1: int | None = None,
+    phase2_horizon: int | None = None,
 ) -> HealthSnapshot:
     when = now or _wall_now()
     root = Path(campaign_dir)
@@ -237,6 +287,8 @@ def read_health_snapshot(
         overlapping_heartbeats=overlapping,
         heartbeat=heartbeat,
         job_id=job_id,
+        cap_phase1=cap_phase1,
+        phase2_horizon=phase2_horizon,
     )
     if heartbeat is not None:
         stamped = _parse_stamp(heartbeat.get("heartbeat_at"))
@@ -388,7 +440,6 @@ def render_watch_layout(snap: HealthSnapshot, now: datetime | None = None) -> Re
     when = now or _wall_now()
     header = Table.grid(padding=(0, 2))
     header.add_column()
-    header.add_column()
     elapsed = _elapsed_label(snap.started_at, when)
     fill = (
         "stale"
@@ -414,14 +465,79 @@ def render_watch_layout(snap: HealthSnapshot, now: datetime | None = None) -> Re
         header_bits.append(f"in_flight_http {snap.in_flight_http}")
     header.add_row(Text(" ".join(header_bits)))
 
+    empty_group = {
+        "pending": 0,
+        "live": 0,
+        "completed": 0,
+        "censored": 0,
+        "failed": 0,
+        "interrupted": 0,
+        "s1_finished": 0,
+        "s1_gate": 0,
+        "s1_t_gates": [],
+        "s2_psv_fail": 0,
+        "s2_n": [],
+        "s2_horizon": None,
+    }
+    groups: dict[tuple[Any, Any, Any], dict[str, Any]] = {}
+    for row in snap.sidecars:
+        key = (row.get("program"), row.get("topology"), row.get("cm_k"))
+        bucket = groups.setdefault(key, {**empty_group, "s1_t_gates": [], "s2_n": []})
+        status = row.get("run_status")
+        if status in {"pending", "live", "completed", "censored", "failed", "interrupted"}:
+            bucket[status] += 1
+        if status == "in_progress":
+            bucket["live"] += 1
+        if row.get("program") == "emergence" and status in _TERMINAL:
+            bucket["s1_finished"] += 1
+            if _is_true(row.get("gate_passed")):
+                bucket["s1_gate"] += 1
+                t_gate = row.get("t_gate")
+                if isinstance(t_gate, (int, float)):
+                    bucket["s1_t_gates"].append(float(t_gate))
+        if row.get("program") == "cm":
+            if status in _TERMINAL and row.get("prepared_state_valid") is False:
+                bucket["s2_psv_fail"] += 1
+            n_val = _interaction_t(row)
+            if n_val is not None:
+                bucket["s2_n"].append(n_val)
+            stored_h = row.get("phase2_horizon")
+            if isinstance(stored_h, (int, float)) and stored_h > 0:
+                bucket["s2_horizon"] = int(stored_h)
+    if snap.heartbeat is not None and snap.total is not None:
+        cells = _queue_cells(snap.heartbeat.get("tasks")) or []
+        occupied = {_cell_key(row) for row in snap.sidecars if row.get("run_status") in _OCCUPIED}
+        pending_groups: Counter[tuple[Any, Any, Any]] = Counter()
+        for cell in cells:
+            if _cell_key(cell) not in occupied:
+                pending_groups[(cell.get("program"), cell.get("topology"), cell.get("cm_k"))] += 1
+        for key, count in pending_groups.items():
+            groups.setdefault(key, {**empty_group, "s1_t_gates": [], "s2_n": []})["pending"] = count
+
+    live_progress: list[tuple[float, int]] = []
+    for row in snap.sidecars:
+        if row.get("run_status") != "in_progress":
+            continue
+        t_val = _interaction_t(row)
+        cap = _row_cap(row, cap_phase1=snap.cap_phase1, phase2_horizon=snap.phase2_horizon)
+        if t_val is not None and cap is not None:
+            live_progress.append((t_val, cap))
+
     bars = Table(title="Campaign", expand=True)
     bars.add_column("done/total")
     bars.add_column("running")
     done = snap.completed + snap.censored + snap.failed
-    bars.add_row(
-        f"{done}/{_format_unknown(snap.total)}",
-        f"in_progress {snap.in_progress}",
-    )
+    if live_progress:
+        mean_t = sum(item[0] for item in live_progress) / len(live_progress)
+        caps = {item[1] for item in live_progress}
+        running: RenderableType
+        if len(caps) == 1:
+            running = _progress_cell(mean_t, next(iter(caps)))
+        else:
+            running = Text(f"in_progress {snap.in_progress} (mixed caps)")
+    else:
+        running = Text(f"in_progress {snap.in_progress}")
+    bars.add_row(f"{done}/{_format_unknown(snap.total)}", running)
 
     by_task = Table(title="By task / topology", expand=True)
     by_task.add_column("program")
@@ -433,48 +549,40 @@ def render_watch_layout(snap: HealthSnapshot, now: datetime | None = None) -> Re
     by_task.add_column("censored")
     by_task.add_column("failed")
     by_task.add_column("interrupted")
-    groups: dict[tuple[Any, Any, Any], dict[str, int]] = {}
-    for row in snap.sidecars:
-        key = (row.get("program"), row.get("topology"), row.get("cm_k"))
-        bucket = groups.setdefault(
-            key,
-            {
-                "pending": 0,
-                "live": 0,
-                "completed": 0,
-                "censored": 0,
-                "failed": 0,
-                "interrupted": 0,
-            },
-        )
-        status = row.get("run_status")
-        if status in bucket:
-            bucket[status] += 1
-        if status == "in_progress":
-            bucket["live"] += 1
-    if snap.heartbeat is not None and snap.total is not None:
-        cells = _queue_cells(snap.heartbeat.get("tasks")) or []
-        occupied = {_cell_key(row) for row in snap.sidecars if row.get("run_status") in _OCCUPIED}
-        pending_groups: Counter[tuple[Any, Any, Any]] = Counter()
-        for cell in cells:
-            if _cell_key(cell) not in occupied:
-                pending_groups[(cell.get("program"), cell.get("topology"), cell.get("cm_k"))] += 1
-        for key, count in pending_groups.items():
-            groups.setdefault(
-                key,
-                {
-                    "pending": 0,
-                    "live": 0,
-                    "completed": 0,
-                    "censored": 0,
-                    "failed": 0,
-                    "interrupted": 0,
-                },
-            )["pending"] = count
+    by_task.add_column("s1 gate")
+    by_task.add_column("s1 t_gate")
+    by_task.add_column("s2 psv_fail")
+    by_task.add_column("s2 n/horizon")
     if not groups:
-        by_task.add_row("-", "-", "-", "-", "-", "-", "-", "-", "-")
+        by_task.add_row("-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
     else:
         for (program, topology, cm_k), bucket in sorted(groups.items(), key=lambda item: str(item[0])):
+            if program == "emergence" and bucket["s1_finished"]:
+                s1_gate = f"{bucket['s1_gate']}/{bucket['s1_finished']}"
+                s1_t = (
+                    str(statistics.median(bucket["s1_t_gates"]))
+                    if bucket["s1_t_gates"]
+                    else "unknown"
+                )
+            elif program == "emergence":
+                s1_gate = "0/0"
+                s1_t = "unknown"
+            else:
+                s1_gate = "-"
+                s1_t = "-"
+            if program == "cm":
+                s2_fail = str(bucket["s2_psv_fail"])
+                horizon = bucket["s2_horizon"] if bucket["s2_horizon"] is not None else snap.phase2_horizon
+                if bucket["s2_n"] and horizon:
+                    mean_n = sum(bucket["s2_n"]) / len(bucket["s2_n"])
+                    s2_prog = f"{mean_n:.0f}/{horizon}"
+                elif horizon:
+                    s2_prog = f"unknown/{horizon}"
+                else:
+                    s2_prog = "unknown"
+            else:
+                s2_fail = "-"
+                s2_prog = "-"
             by_task.add_row(
                 str(program or "-"),
                 str(topology or "-"),
@@ -485,41 +593,66 @@ def render_watch_layout(snap: HealthSnapshot, now: datetime | None = None) -> Re
                 str(bucket["censored"]),
                 str(bucket["failed"]),
                 str(bucket["interrupted"]),
+                s1_gate,
+                s1_t,
+                s2_fail,
+                s2_prog,
             )
 
     study1 = Table(title="Health (Study 1)", expand=True)
+    study1.add_column("topology")
     study1.add_column("gate_passed / finished")
     study1.add_column("median t_gate")
     study1.add_column("censored")
-    study1.add_row(
-        f"{snap.gate_passed}/{snap.emergence_finished}",
-        "unknown" if snap.median_t_gate is None else str(snap.median_t_gate),
-        str(sum(1 for row in snap.sidecars if row.get("program") == "emergence" and row.get("run_status") == "censored")),
-    )
+    emergence_rows = [
+        (key, bucket)
+        for key, bucket in sorted(groups.items(), key=lambda item: str(item[0]))
+        if key[0] == "emergence"
+    ]
+    if not emergence_rows:
+        study1.add_row("-", f"{snap.gate_passed}/{snap.emergence_finished}", "unknown" if snap.median_t_gate is None else str(snap.median_t_gate), str(snap.censored))
+    else:
+        for (_program, topology, _cm_k), bucket in emergence_rows:
+            median = (
+                str(statistics.median(bucket["s1_t_gates"]))
+                if bucket["s1_t_gates"]
+                else "unknown"
+            )
+            study1.add_row(
+                str(topology or "-"),
+                f"{bucket['s1_gate']}/{bucket['s1_finished']}",
+                median,
+                str(bucket["censored"]),
+            )
 
     study2 = Table(title="Health (Study 2)", expand=True)
+    study2.add_column("topology")
+    study2.add_column("k")
     study2.add_column("prepared_state_valid failures")
-    study2.add_column("progress")
-    progress_bits = []
-    if snap.flip_true is not None:
-        progress_bits.append(f"flip {snap.flip_true}")
+    study2.add_column("n / horizon")
+    cm_rows = [
+        (key, bucket)
+        for key, bucket in sorted(groups.items(), key=lambda item: str(item[0]))
+        if key[0] == "cm"
+    ]
+    if not cm_rows:
+        study2.add_row("-", "-", str(snap.prepared_state_invalid), "-")
     else:
-        n_vals = [
-            row.get("n_interactions")
-            for row in snap.sidecars
-            if row.get("program") == "cm" and isinstance(row.get("n_interactions"), (int, float))
-        ]
-        h_vals = [
-            row.get("phase2_horizon")
-            for row in snap.sidecars
-            if row.get("program") == "cm" and isinstance(row.get("phase2_horizon"), (int, float))
-        ]
-        if n_vals or h_vals:
-            progress_bits.append(
-                f"n_interactions {n_vals[0] if n_vals else 'unknown'} / "
-                f"phase2_horizon {h_vals[0] if h_vals else 'unknown'}"
+        for (_program, topology, cm_k), bucket in cm_rows:
+            horizon = bucket["s2_horizon"] if bucket["s2_horizon"] is not None else snap.phase2_horizon
+            if bucket["s2_n"] and horizon:
+                mean_n = sum(bucket["s2_n"]) / len(bucket["s2_n"])
+                prog = f"{mean_n:.0f}/{horizon}"
+            elif horizon:
+                prog = f"unknown/{horizon}"
+            else:
+                prog = "unknown"
+            study2.add_row(
+                str(topology or "-"),
+                str(cm_k if cm_k is not None else "-"),
+                str(bucket["s2_psv_fail"]),
+                prog,
             )
-    study2.add_row(str(snap.prepared_state_invalid), " ".join(progress_bits) or "-")
 
     failures = Table(title="Failures", expand=True)
     failures.add_column("error_class")
@@ -544,6 +677,10 @@ def render_watch_layout(snap: HealthSnapshot, now: datetime | None = None) -> Re
     live.add_column("seed")
     live.add_column("program")
     live.add_column("t")
+    live.add_column("t / cap")
+    live.add_column("last_ckpt")
+    live.add_column("n_retries")
+    live.add_column("error_class")
     live.add_column("status")
     live.add_column("run_id")
     by_id = {row.get("run_id"): row for row in snap.sidecars}
@@ -551,20 +688,25 @@ def render_watch_layout(snap: HealthSnapshot, now: datetime | None = None) -> Re
         row.get("run_id") for row in snap.sidecars if row.get("run_status") == "in_progress"
     ][:32]
     if not rows:
-        live.add_row("-", "-", "-", "-", "-", "-")
+        live.add_row("-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
     else:
         for run_id in rows:
             row = by_id.get(run_id, {})
             status = str(row.get("run_status") or "")
             show_id = str(run_id or "") if status == "failed" else ""
-            t_val = row.get("n_interactions")
-            if t_val is None:
-                t_val = row.get("last_checkpoint_t")
+            t_val = _interaction_t(row)
+            cap = _row_cap(row, cap_phase1=snap.cap_phase1, phase2_horizon=snap.phase2_horizon)
+            err = row.get("error_class")
+            retries = row.get("n_retries")
             live.add_row(
                 str(row.get("topology") or "-"),
                 str(row.get("seed_index") if row.get("seed_index") is not None else "-"),
                 str(row.get("program") or "-"),
-                str(t_val if t_val is not None else "-"),
+                str(int(t_val) if t_val is not None else "-"),
+                _progress_cell(t_val, cap),
+                str(row.get("last_checkpoint_t") if row.get("last_checkpoint_t") is not None else "-"),
+                str(retries if isinstance(retries, (int, float)) else "-"),
+                str(err) if isinstance(err, str) and err else "-",
                 status or "-",
                 show_id,
             )
@@ -590,12 +732,29 @@ def run_health_cli(
     isatty: bool | None = None,
     stdout: TextIO | None = None,
     sleep=None,
+    cap_phase1: int | None = None,
+    phase2_horizon: int | None = None,
 ) -> int:
     out = stdout if stdout is not None else sys.stdout
     tty = _stdout_isatty() if isatty is None else isatty
     sleeper = time.sleep if sleep is None else sleep
+    loaded_cap, loaded_horizon = _load_protocol_caps()
+    if cap_phase1 is None:
+        cap_phase1 = loaded_cap
+    if phase2_horizon is None:
+        phase2_horizon = loaded_horizon
+
+    def _snap(tick: datetime) -> HealthSnapshot:
+        return read_health_snapshot(
+            campaign_dir,
+            model_shorthand,
+            now=tick,
+            cap_phase1=cap_phase1,
+            phase2_horizon=phase2_horizon,
+        )
+
     if watch and tty:
-        snap = read_health_snapshot(campaign_dir, model_shorthand, now=now or _wall_now())
+        snap = _snap(now or _wall_now())
         try:
             with Live(
                 render_watch_layout(snap, now=now or _wall_now()),
@@ -605,11 +764,11 @@ def run_health_cli(
                 while True:
                     sleeper(WATCH_REFRESH_S)
                     tick = now or _wall_now()
-                    snap = read_health_snapshot(campaign_dir, model_shorthand, now=tick)
+                    snap = _snap(tick)
                     live.update(render_watch_layout(snap, now=tick))
         except KeyboardInterrupt:
             return verdict_exit_code(snap.verdict)
         return verdict_exit_code(snap.verdict)
-    snap = read_health_snapshot(campaign_dir, model_shorthand, now=now or _wall_now())
+    snap = _snap(now or _wall_now())
     print(format_health_text(snap), file=out)
     return verdict_exit_code(snap.verdict)

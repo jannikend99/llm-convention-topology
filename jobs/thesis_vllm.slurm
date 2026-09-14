@@ -245,6 +245,12 @@ else
   exit 1
 fi
 
+# Yen does not always export SLURM_TIMELIMIT; copy TimeLimit for the heartbeat header.
+if [[ -z "${SLURM_TIMELIMIT:-}" && -n "${SLURM_JOB_ID:-}" ]]; then
+  SLURM_TIMELIMIT="$(scontrol show job "${SLURM_JOB_ID}" 2>/dev/null | tr ' ' '\n' | sed -n 's/^TimeLimit=//p' | head -n 1 || true)"
+fi
+export SLURM_TIMELIMIT="${SLURM_TIMELIMIT:-}"
+
 mkdir -p "${ARTIFACT_ROOT}" "$(dirname "${VLLM_LOG}")" "$(dirname "${VENV}")"
 
 if [[ ! -x "${VENV}/bin/python" ]]; then

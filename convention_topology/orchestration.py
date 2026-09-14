@@ -350,7 +350,6 @@ async def run_slice_async(
     job_id = allocation_job_id()
     live_path = heartbeat_path(campaign_dir, job_id)
     tasks = list(task_argv or [])
-    slurm_timelimit = os.environ.get("SLURM_TIMELIMIT")
     print(
         "[slice] max_concurrent_runs="
         f"{model_spec.max_concurrent_runs} in_flight_limit={model_spec.in_flight_limit} "
@@ -370,6 +369,7 @@ async def run_slice_async(
             "started_at": started_at,
             "tasks": tasks,
         }
+        slurm_timelimit = os.environ.get("SLURM_TIMELIMIT")
         if slurm_timelimit:
             payload["slurm_timelimit"] = slurm_timelimit
         return payload

@@ -272,6 +272,8 @@ class DirtyGitCliTests(unittest.TestCase):
         )[0]
         self.assertNotIn("TimeLimit=1:00:00", task_branch)
         self.assertIn("cannot be combined with --task", job)
+        self.assertIn('export SLURM_TIMELIMIT="${SLURM_TIMELIMIT:-}"', job)
+        self.assertIn('scontrol show job "${SLURM_JOB_ID}"', job)
         counted_prefix = job.split("if [[ -n \"${DIAG_LADDER:-}\" ]]; then", 1)[0]
         self.assertNotIn('SEED_TO:?', counted_prefix)
         self.assertNotIn('TOPOLOGY:?', counted_prefix)

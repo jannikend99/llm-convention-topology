@@ -395,8 +395,7 @@ def test_no_eligibility_and_no_invented_flip(campaign: Path):
     assert "eligibility" not in text
     assert "flip" not in text
     layout = _export_layout(snap)
-    assert "n_interactions" in layout
-    assert "phase2_horizon" in layout
+    assert "20/100" in layout
 
 
 def test_stale_heartbeat_does_not_present_live_count(campaign: Path):
@@ -1008,7 +1007,7 @@ def test_boolean_flip_is_reported_when_present(campaign: Path):
 def _export_layout(snap) -> str:
     from rich.console import Console
 
-    console = Console(record=True, width=140, color_system=None)
+    console = Console(record=True, width=220, color_system=None)
     console.print(render_watch_layout(snap, now=NOW))
     return console.export_text()
 
@@ -1023,3 +1022,89 @@ def test_run_health_cli_prints_verdict_first(campaign: Path, capsys):
     out = capsys.readouterr().out
     assert out.splitlines()[0] in {"OK", "WARN", "FAIL"}
     assert code == 1
+
+
+def test_watch_progress_bars_study_kpis_and_live_fields(campaign: Path):
+    _heartbeat(
+        campaign,
+        "1001",
+        _hb(
+            tasks=["emergence:mixing:0-1", "emergence:lattice:0-1", "cm:mixing:0-1:k=8"],
+            live_run_ids=["live-mix"],
+        ),
+    )
+    _meta(
+        campaign,
+        "gemma4_31b",
+        "mixing",
+        "live-mix",
+        {
+            "run_id": "live-mix",
+            "model_shorthand": "gemma4_31b",
+            "program": "emergence",
+            "topology": "mixing",
+            "seed_index": 0,
+            "run_status": "in_progress",
+            "n_interactions": 508,
+            "last_checkpoint_t": 500,
+            "n_retries": 2,
+            "error_class": "schema_retry",
+        },
+    )
+    _meta(
+        campaign,
+        "gemma4_31b",
+        "lattice",
+        "done-lat",
+        {
+            "run_id": "done-lat",
+            "model_shorthand": "gemma4_31b",
+            "program": "emergence",
+            "topology": "lattice",
+            "seed_index": 0,
+            "run_status": "completed",
+            "gate_passed": True,
+            "t_gate": 1200,
+        },
+    )
+    _meta(
+        campaign,
+        "gemma4_31b",
+        "mixing",
+        "cm-1",
+        {
+            "run_id": "cm-1",
+            "model_shorthand": "gemma4_31b",
+            "program": "cm",
+            "topology": "mixing",
+            "cm_k": 8,
+            "seed_index": 0,
+            "run_status": "completed",
+            "prepared_state_valid": False,
+            "n_interactions": 400,
+            "phase2_horizon": 1000,
+        },
+    )
+    snap = read_health_snapshot(
+        campaign,
+        "gemma4_31b",
+        now=NOW,
+        cap_phase1=5000,
+        phase2_horizon=1000,
+    )
+    text = _export_layout(snap)
+    assert "508/5000" in text
+    assert "400/1000" in text
+    assert "1200.0" in text
+    live_block = text.split("Live cells")[-1]
+    assert "508" in live_block
+    assert "500" in live_block
+    assert "live-mix" not in live_block
+    s1 = text.split("Health (Study 1)")[1].split("Health (Study 2)")[0]
+    assert "lattice" in s1
+    assert "mixing" in s1
+    s2 = text.split("Health (Study 2)")[1].split("Failures")[0]
+    assert "400/1000" in s2
+    source = (REPO / "convention_topology" / "health.py").read_text(encoding="utf-8")
+    assert "last_checkpoint_t" in source
+    assert "n_retries" in source
