@@ -2,7 +2,9 @@
 # Fill ladder: three +6 R steps per keeper from the last stable R.
 # Caps: max_num_seqs=2R, in_flight=2R+2, cells=2R (task emergence:mixing:0-2R).
 # Wall default 25:00 — vLLM start is 5–8 min; remaining ~10–15 min is fill.
-# Sequential --dependency=afterany (one -G 2 at a time).
+# Two chains in parallel (Yen 4-GPU cap = two -G 2 jobs):
+#   A: gemma 54/60/66 then qwen 70/76/82
+#   B: olmo 70/76/82 then glm 70/76/82
 #
 #   bash jobs/fill_r_ladder.sh
 #   bash jobs/fill_r_ladder.sh --dry-run
@@ -20,13 +22,6 @@ MANIFEST_DIR="${SCRATCH}/runs/fill-ladder"
 MANIFEST="${MANIFEST_DIR}/manifest.jsonl"
 SLURM_FILE="${ROOT}/jobs/thesis_vllm.slurm"
 
-LADDER=(
-  "gemma4_31b 54 60 66"
-  "olmo31_32b 70 76 82"
-  "qwen38_27b 70 76 82"
-  "glm4_32b 70 76 82"
-)
-
 if [[ ! -f "${SLURM_FILE}" ]]; then
   echo "missing ${SLURM_FILE}" >&2
   exit 1
@@ -37,13 +32,12 @@ if [[ "${DRY}" -eq 0 ]]; then
   : > "${MANIFEST}"
 fi
 
-prev=""
-for line in "${LADDER[@]}"; do
-  # shellcheck disable=SC2086
-  set -- ${line}
-  model="$1"
-  shift
-  for r in "$@"; do
+submit_chain() {
+  local prev=""
+  local spec model r seqs inflight campaign artifact jobname jid
+  for spec in "$@"; do
+    model="${spec%%:*}"
+    r="${spec##*:}"
     seqs=$((2 * r))
     inflight=$((2 * r + 2))
     campaign="gpu-fill-ladder-${model}-c${r}"
@@ -55,7 +49,7 @@ for line in "${LADDER[@]}"; do
       prev="${model}-c${r}"
       continue
     fi
-    dep=()
+    local dep=()
     if [[ -n "${prev}" ]]; then
       dep=(--dependency="afterany:${prev}")
     fi
@@ -75,7 +69,17 @@ for line in "${LADDER[@]}"; do
     }))" "${jid}" "${model}" "${r}" "${seqs}" "${inflight}" "${campaign}" "${artifact}" "${WALL}" >> "${MANIFEST}"
     echo "submitted ${jid}"
   done
-done
+}
+
+echo "=== chain A (gemma then qwen) ==="
+submit_chain \
+  gemma4_31b:54 gemma4_31b:60 gemma4_31b:66 \
+  qwen38_27b:70 qwen38_27b:76 qwen38_27b:82
+
+echo "=== chain B (olmo then glm) ==="
+submit_chain \
+  olmo31_32b:70 olmo31_32b:76 olmo31_32b:82 \
+  glm4_32b:70 glm4_32b:76 glm4_32b:82
 
 if [[ "${DRY}" -eq 0 ]]; then
   echo "manifest ${MANIFEST}"
