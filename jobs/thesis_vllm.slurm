@@ -90,6 +90,7 @@ COUNTED_MODEL=""
 COUNTED_CAMPAIGN=""
 COUNTED_ARTIFACT_ROOT=""
 HAS_TASK=0
+HAS_TECH_CHECK=0
 HAS_BASE_URL=0
 HAS_ARTIFACT_ROOT=0
 _parse_i=0
@@ -121,6 +122,14 @@ while [[ ${_parse_i} -lt ${#_parse_args[@]} ]]; do
       HAS_TASK=1
       _parse_i=$((_parse_i + 1))
       ;;
+    --tech-check)
+      HAS_TECH_CHECK=1
+      _parse_i=$((_parse_i + 1))
+      ;;
+    --tech-check=*)
+      HAS_TECH_CHECK=1
+      _parse_i=$((_parse_i + 1))
+      ;;
     --artifact-root)
       COUNTED_ARTIFACT_ROOT="${_parse_args[$((_parse_i + 1))]:-}"
       HAS_ARTIFACT_ROOT=1
@@ -147,6 +156,14 @@ done
 
 if [[ -n "${DIAG_LADDER:-}" && "${HAS_TASK}" -eq 1 ]]; then
   echo "DIAG_LADDER cannot be combined with --task" >&2
+  exit 1
+fi
+if [[ -n "${DIAG_LADDER:-}" && "${HAS_TECH_CHECK}" -eq 1 ]]; then
+  echo "DIAG_LADDER cannot be combined with --tech-check" >&2
+  exit 1
+fi
+if [[ "${HAS_TASK}" -eq 1 && "${HAS_TECH_CHECK}" -eq 1 ]]; then
+  echo "--tech-check cannot be combined with --task" >&2
   exit 1
 fi
 
@@ -202,8 +219,29 @@ elif [[ "${HAS_TASK}" -eq 1 ]]; then
   else
     ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"
   fi
+elif [[ "${HAS_TECH_CHECK}" -eq 1 ]]; then
+  if [[ -z "${COUNTED_MODEL}" ]]; then
+    echo "counted job requires --model" >&2
+    exit 1
+  fi
+  if [[ "${COUNTED_CAMPAIGN}" == "experiment" ]]; then
+    echo "--tech-check refuses campaign experiment" >&2
+    exit 1
+  fi
+  MODEL="${COUNTED_MODEL}"
+  CAMPAIGN="${COUNTED_CAMPAIGN:-tech-check}"
+  export MODEL
+  if [[ "${HAS_ARTIFACT_ROOT}" -eq 1 ]]; then
+    ARTIFACT_ROOT="${COUNTED_ARTIFACT_ROOT}"
+  else
+    ARTIFACT_ROOT="${SCRATCH}/runs/${CAMPAIGN}"
+  fi
+  if ! scontrol update JobId="${SLURM_JOB_ID}" TimeLimit=1:00:00; then
+    echo "tech-check failed to set TimeLimit=1:00:00; refusing 24 h slot" >&2
+    exit 1
+  fi
 else
-  echo "submit requires --task on the counted path, or DIAG_LADDER" >&2
+  echo "submit requires --task or --tech-check on the counted path, or DIAG_LADDER" >&2
   exit 1
 fi
 

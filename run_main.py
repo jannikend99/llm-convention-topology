@@ -28,6 +28,7 @@ from convention_topology.orchestration import (
     run_slice_async,
 )
 from convention_topology.persistence import campaign_root
+from convention_topology.tech_check import DEFAULT_TECH_CHECK_N, run_tech_check
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -38,6 +39,16 @@ DIAG_FULL_KNOB_PREFIXES = ("diag-ashery", "diag-h12-", "diag-n48-", "diag-string
 def _campaign_requires_full_diag_knobs(campaign: str) -> bool:
     name = str(campaign)
     return name.startswith(DIAG_FULL_KNOB_PREFIXES)
+
+
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
 
 
 def _parse_task_list(parser: argparse.ArgumentParser, specs: list[str]) -> list[dict]:
@@ -53,6 +64,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Counted naming-game campaign queue.")
     parser.add_argument("--print-jobs", action="store_true")
     parser.add_argument("--print-queue", action="store_true")
+    parser.add_argument("--tech-check", action="store_true")
+    parser.add_argument("--tech-check-n", type=_positive_int, default=None)
     parser.add_argument("--task", action="append", default=[], dest="tasks")
     parser.add_argument("--model", default=None)
     parser.add_argument("--config", default=None)
@@ -64,6 +77,45 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.print_jobs:
         parser.error("--print-jobs is removed; use --print-queue")
+    if args.tech_check and args.print_queue:
+        parser.error("--tech-check cannot be combined with --print-queue")
+    if args.tech_check and args.tasks:
+        parser.error("--tech-check cannot be combined with --task")
+    if args.tech_check_n is not None and not args.tech_check:
+        parser.error("--tech-check-n requires --tech-check")
+
+    if args.tech_check:
+        if not args.model:
+            parser.error("--model is required")
+        campaign_name = args.campaign if args.campaign else "tech-check"
+        if campaign_name == "experiment":
+            parser.error("--tech-check refuses campaign experiment")
+        n = args.tech_check_n if args.tech_check_n is not None else DEFAULT_TECH_CHECK_N
+        try:
+            require_clean_worktree(REPO_ROOT)
+        except DirtyWorktreeError as exc:
+            print(str(exc), flush=True)
+            return 2
+        config = load_config(args.config)
+        config["run"]["campaign"] = check_campaign_name(campaign_name)
+        override = args.base_url or os.environ.get("SERVE_BASE_URL") or os.environ.get("BASE_URL")
+        model_spec = resolve_model(config, args.model)
+        if override:
+            if config["serve"]["provider"] != "mock" and not is_localhost_url(override):
+                raise ConfigError("non-localhost serve.base_url fails unless provider is mock")
+            model_spec = replace(model_spec, base_url=override)
+        root = campaign_root(
+            args.artifact_root if args.artifact_root is not None else config["run"]["artifact_root"],
+            campaign_name,
+            REPO_ROOT,
+        )
+        return run_tech_check(
+            config,
+            model_spec,
+            campaign_dir=root,
+            n=n,
+            mock_policy=args.mock_policy,
+        )
 
     if not args.tasks:
         parser.error("at least one --task is required")

@@ -30,6 +30,10 @@ class DirtyGitCliTests(unittest.TestCase):
                 2,
             )
 
+    def test_run_main_tech_check_refuses_dirty_tree(self):
+        with patch("run_main.require_clean_worktree", side_effect=DirtyWorktreeError("dirty")):
+            self.assertEqual(run_main.main(["--model", "mock", "--tech-check"]), 2)
+
     def test_run_main_print_queue_does_not_need_clean_tree(self):
         code = run_main.main(["--print-queue", "--task", "emergence:mixing:0-1"])
         self.assertEqual(code, 0)
@@ -250,6 +254,23 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn("#SBATCH -t 1-00:00:00", job)
         self.assertNotIn("#SBATCH -t 1:00:00", job)
         self.assertNotIn("#SBATCH -t 12:00:00", job)
+        self.assertIn('scontrol update JobId="${SLURM_JOB_ID}" TimeLimit=1:00:00', job)
+        serve_at = job.find('"${VLLM_BIN[@]}" serve')
+        limit_at = job.find("TimeLimit=1:00:00")
+        self.assertGreater(limit_at, 0)
+        self.assertGreater(serve_at, limit_at)
+        self.assertIn("HAS_TECH_CHECK", job)
+        self.assertIn("--tech-check=*)", job)
+        self.assertIn("submit requires --task or --tech-check", job)
+        self.assertNotIn("submit requires --task on the counted path, or DIAG_LADDER", job)
+        self.assertIn("DIAG_LADDER cannot be combined with --tech-check", job)
+        self.assertIn('CAMPAIGN="${COUNTED_CAMPAIGN:-tech-check}"', job)
+        self.assertIn("--tech-check refuses campaign experiment", job)
+        self.assertIn("tech-check failed to set TimeLimit=1:00:00; refusing 24 h slot", job)
+        task_branch = job.split('elif [[ "${HAS_TASK}" -eq 1 ]]; then', 1)[1].split(
+            'elif [[ "${HAS_TECH_CHECK}" -eq 1 ]]; then', 1
+        )[0]
+        self.assertNotIn("TimeLimit=1:00:00", task_branch)
         self.assertIn("cannot be combined with --task", job)
         counted_prefix = job.split("if [[ -n \"${DIAG_LADDER:-}\" ]]; then", 1)[0]
         self.assertNotIn('SEED_TO:?', counted_prefix)
