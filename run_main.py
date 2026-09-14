@@ -27,6 +27,7 @@ from convention_topology.orchestration import (
     parse_task,
     run_slice_async,
 )
+from convention_topology.health import run_health_cli
 from convention_topology.persistence import campaign_root
 from convention_topology.tech_check import DEFAULT_TECH_CHECK_N, run_tech_check
 
@@ -66,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--print-queue", action="store_true")
     parser.add_argument("--tech-check", action="store_true")
     parser.add_argument("--tech-check-n", type=_positive_int, default=None)
+    parser.add_argument("--health", action="store_true")
+    parser.add_argument("--watch", action="store_true")
     parser.add_argument("--task", action="append", default=[], dest="tasks")
     parser.add_argument("--model", default=None)
     parser.add_argument("--config", default=None)
@@ -81,6 +84,20 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--tech-check cannot be combined with --print-queue")
     if args.tech_check and args.tasks:
         parser.error("--tech-check cannot be combined with --task")
+    if args.health and args.watch:
+        parser.error("--health cannot be combined with --watch")
+    if args.health and args.tasks:
+        parser.error("--health cannot be combined with --task")
+    if args.watch and args.tasks:
+        parser.error("--watch cannot be combined with --task")
+    if args.health and args.tech_check:
+        parser.error("--health cannot be combined with --tech-check")
+    if args.watch and args.tech_check:
+        parser.error("--watch cannot be combined with --tech-check")
+    if args.health and args.print_queue:
+        parser.error("--health cannot be combined with --print-queue")
+    if args.watch and args.print_queue:
+        parser.error("--watch cannot be combined with --print-queue")
     if args.tech_check_n is not None and not args.tech_check:
         parser.error("--tech-check-n requires --tech-check")
 
@@ -115,6 +132,18 @@ def main(argv: list[str] | None = None) -> int:
             campaign_dir=root,
             n=n,
             mock_policy=args.mock_policy,
+        )
+
+    if args.health or args.watch:
+        if not args.campaign:
+            parser.error("--campaign is required")
+        if not args.model:
+            parser.error("--model is required")
+        root = campaign_root(args.artifact_root, args.campaign, REPO_ROOT)
+        return run_health_cli(
+            campaign_dir=root,
+            model_shorthand=args.model,
+            watch=bool(args.watch),
         )
 
     if not args.tasks:
