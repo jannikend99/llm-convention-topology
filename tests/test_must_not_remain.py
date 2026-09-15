@@ -111,6 +111,31 @@ class MustNotRemainTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_run_table(Path(tmp))
 
+    def test_analysis_refuses_mixed_gate_windows(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        from convention_topology.analysis.common import load_run_table
+        from convention_topology.persistence import empty_sidecar, write_meta
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name, window in (("a", 72), ("b", 144)):
+                meta_path = root / "runs" / "mock" / "mixing" / f"{name}.meta.json"
+                payload = empty_sidecar()
+                payload.update(
+                    topology="mixing",
+                    model_shorthand="mock",
+                    program="emergence",
+                    run_status="in_progress",
+                    gate_window=window,
+                    N=window // 3,
+                )
+                write_meta(meta_path, payload)
+            with self.assertRaises(ValueError) as raised:
+                load_run_table(root)
+            self.assertIn("mixed gate_window", str(raised.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

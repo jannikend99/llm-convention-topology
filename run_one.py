@@ -8,7 +8,13 @@ import asyncio
 from pathlib import Path
 
 from convention_topology.campaign import ensure_campaign_files
-from convention_topology.config import load_config, resolve_model
+from convention_topology.config import (
+    ConfigError,
+    apply_cli_protocol_env,
+    check_campaign_name,
+    load_config,
+    resolve_model,
+)
 from convention_topology.git_guard import DirtyWorktreeError, current_commit, require_clean_worktree
 from convention_topology.orchestration import build_client
 from convention_topology.persistence import campaign_root, read_meta
@@ -27,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--k", type=int, default=None, dest="cm_k")
     parser.add_argument("--seed-index", type=int, required=True)
     parser.add_argument("--config", default=None)
+    parser.add_argument("--campaign", default=None)
     parser.add_argument("--artifact-root", default=None)
     parser.add_argument("--mock-policy", default="imitate_modal")
     args = parser.parse_args(argv)
@@ -43,6 +50,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     config = load_config(args.config)
+    if args.campaign is not None:
+        config["run"]["campaign"] = check_campaign_name(args.campaign)
+    try:
+        apply_cli_protocol_env(config)
+    except ConfigError as exc:
+        parser.error(str(exc))
     model_spec = resolve_model(config, args.model)
     campaign = str(config["run"]["campaign"])
     root = campaign_root(

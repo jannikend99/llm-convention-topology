@@ -638,23 +638,12 @@ class FunnelAndSmokeTests(unittest.TestCase):
 class ScopedAbsenceTests(unittest.TestCase):
     def test_live_analysis_avoids_banned_dispatch(self):
         hits = []
-        skip = {"memory_decision.py"}
         for path in LIVE_ANALYSIS.glob("*.py"):
-            if path.name in skip:
-                continue
             text = path.read_text(encoding="utf-8")
             for token in ('"complete"', "eligibility", "letter pool", "archive/pre-rebuild", "DEFAULT_WINDOW = 72"):
                 if token in text:
                     hits.append(f"{path.name}:{token}")
         self.assertEqual(hits, [])
-
-
-class MemoryCliTests(unittest.TestCase):
-    def test_memory_decision_fails_closed(self):
-        import analyze
-
-        with self.assertRaises(SystemExit):
-            analyze.main(["--model", "mock", "--memory-decision"])
 
 
 if __name__ == "__main__":

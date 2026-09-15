@@ -270,14 +270,6 @@ def print_jobs(config: Mapping[str, Any], *, program: str | None = None) -> list
     return jobs
 
 
-def format_job_line(job: JobSlice) -> str:
-    return (
-        f"python run_main.py --model {job.model} --program {job.program} "
-        f"--seed-from {job.seed_from} --seed-to {job.seed_to} "
-        f"# model_id={job.model_id} gpus={job.gpus}"
-    )
-
-
 def cell_grid(
     config: Mapping[str, Any],
     *,

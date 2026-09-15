@@ -31,20 +31,21 @@ def success_by_round(runs_df: pd.DataFrame, *, mixing_only: bool = False) -> pd.
     work = runs_df
     if mixing_only:
         work = work[work["topology"] == "mixing"]
-    buckets: dict[tuple[Any, Any, int], list[int]] = {}
+    buckets: dict[tuple[Any, Any, int, int], list[int]] = {}
     for _, row in work.iterrows():
         path = row.get("events_path")
         if not path or not Path(path).exists():
             continue
         n_agents = int(row["N"]) if pd.notna(row.get("N")) else 48
         for ix in interactions_from_events(read_events(Path(path))):
-            key = (row.get("model_shorthand"), row.get("topology"), int(ix["t"]))
+            key = (row.get("model_shorthand"), row.get("topology"), int(ix["t"]), n_agents)
             buckets.setdefault(key, []).append(int(ix["success"]))
     rows = []
-    for (model, topology, t), successes in sorted(buckets.items(), key=lambda item: (str(item[0][0]), str(item[0][1]), item[0][2])):
+    for (model, topology, t, n_agents), successes in sorted(
+        buckets.items(), key=lambda item: (str(item[0][0]), str(item[0][1]), item[0][2])
+    ):
         arr = np.asarray(successes, dtype=float)
         mean, low, high = _mean_ci(arr)
-        n_agents = 48
         rows.append(
             {
                 "model_shorthand": model,

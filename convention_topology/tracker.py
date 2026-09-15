@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any, Mapping, Sequence
+from typing import Any, Sequence
 
 
 def get_outcome(my_answer: str, partner_answer: str, rewards: Sequence[int]) -> int:
@@ -54,14 +54,3 @@ def unique_modal(labels: Sequence[str]) -> str | None:
     if len(winners) != 1:
         return None
     return winners[0]
-
-
-def modal_label_in_window(
-    tracker: Mapping[str, Sequence[Sequence[str]]],
-    window_size: int,
-) -> str | None:
-    answers = tracker["answers"]
-    if len(answers) < window_size:
-        return None
-    labels = [label for pair in answers[-window_size:] for label in pair]
-    return unique_modal(labels)

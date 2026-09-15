@@ -34,4 +34,5 @@ jobs/*.err
 # Graphify: keep the map, not the AST cache or dated copies
 graphify-out/cache/
 graphify-out/cost.json
+graphify-out/.graphify_analysis.json
 graphify-out/20*/

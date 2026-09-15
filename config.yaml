@@ -37,11 +37,13 @@ run:
   attempted_per_cell: 32
   sampling_plan: fixed_attempted
   checkpoint_every: 1
+  # Counted confirmatory default. Scout/fit jobs must pass --campaign (pilot-run* or diag-*)
+  # plus PILOT_* / DIAG_*. cap_phase1 is part of the protocol fingerprint — a new cap needs a new campaign name.
   campaign: experiment
   artifact_root: ""
 
 jobs:
-  models: [nemotron35_lightning, gemma4_31b, qwen38_27b, mistral_small32, olmo31_32b, glm4_32b]
+  models: [gemma4_31b, qwen38_27b, olmo31_32b, glm4_32b]
   programs: [emergence, cm]
 
 serve:

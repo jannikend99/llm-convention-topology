@@ -14,8 +14,18 @@ ENGINE_RE = re.compile(
 
 
 def _scratch() -> Path:
-    user = os.environ.get("USER", "jendress")
-    return Path(os.environ.get("SCRATCH", f"/scratch/shared/{user}"))
+    if os.environ.get("SCRATCH"):
+        return Path(os.environ["SCRATCH"])
+    user = os.environ.get("USER")
+    if not user:
+        raise SystemExit("USER is unset; cannot resolve /scratch/shared/$USER")
+    primary = Path("/scratch/shared") / user
+    yen = Path("/yen/scratch/shared") / user
+    if primary.is_dir():
+        return primary
+    if yen.is_dir():
+        return yen
+    return primary
 
 
 def _schema_share(root: Path) -> tuple[int, int]:

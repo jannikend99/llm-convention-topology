@@ -17,6 +17,7 @@ from convention_topology.config import (
     apply_diag_tech_interactions,
     apply_pilot_bounds,
     apply_serve_base_url,
+    campaign_requires_full_diag_knobs,
     check_campaign_name,
     config_hash,
     load_config,
@@ -87,14 +88,12 @@ class ConfigLockTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             validate_config(raw)
 
-    def test_default_jobs_models_are_the_six_shorthands(self):
+    def test_default_jobs_models_are_the_four_keepers(self):
         self.assertEqual(
             self.config["jobs"]["models"],
             [
-                "nemotron35_lightning",
                 "gemma4_31b",
                 "qwen38_27b",
-                "mistral_small32",
                 "olmo31_32b",
                 "glm4_32b",
             ],
@@ -273,6 +272,15 @@ class BannedConfigTests(unittest.TestCase):
         raw = self._raw()
         with self.assertRaises(ConfigError):
             apply_diag_protocol(raw, memory_h=5, pool_kind="letters")
+
+    def test_full_diag_knobs_required_for_n24_scout_not_tech(self):
+        self.assertTrue(campaign_requires_full_diag_knobs("diag-n24-scout", {}))
+        self.assertTrue(campaign_requires_full_diag_knobs("diag-lockcell-gemma", {}))
+        self.assertFalse(campaign_requires_full_diag_knobs("diag-tech-gemma4_31b", {}))
+        self.assertFalse(campaign_requires_full_diag_knobs("pilot-run", {}))
+        self.assertFalse(
+            campaign_requires_full_diag_knobs("diag-n24-scout", {"DIAG_TECH_INTERACTIONS": "8"})
+        )
 
     def test_diag_protocol_allows_h5_letters_after_validate(self):
         raw = self._raw()

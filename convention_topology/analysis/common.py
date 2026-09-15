@@ -253,8 +253,10 @@ def load_run_table(data_dir: Path, model_filter: str | None = None) -> pd.DataFr
         unknown = set(table["topology"].dropna().unique()) - ALLOWED_TOPOLOGIES
         if unknown:
             raise ValueError(f"analysis refuses unknown topology ids: {sorted(unknown)}")
-    if "gate_window" in table.columns and (table["gate_window"] == 3 * 24).any():
-        raise ValueError("analysis refuses the old 3N window")
+    if "gate_window" in table.columns:
+        windows = {int(x) for x in table["gate_window"].dropna().unique()}
+        if len(windows) > 1:
+            raise ValueError(f"analysis refuses mixed gate_window values: {sorted(windows)}")
     return table
 
 
@@ -325,30 +327,6 @@ def d5_prepared(runs_df: pd.DataFrame) -> pd.DataFrame:
         if col not in out.columns:
             out[col] = None
     return out[columns]
-
-
-def gate_table(runs_df: pd.DataFrame) -> pd.DataFrame:
-    """Emergence-only counts. Prefer d1_funnel for the D1 spine."""
-    columns = ["topology", "model_shorthand", "attempted", "gate_passed", "censored", "failed"]
-    if runs_df.empty:
-        return pd.DataFrame(columns=columns)
-
-    emergence = runs_df[runs_df["program"] == "emergence"]
-    if emergence.empty:
-        return pd.DataFrame(columns=columns)
-
-    def _agg(group: pd.DataFrame) -> pd.Series:
-        return pd.Series(
-            {
-                "attempted": len(group),
-                "gate_passed": int((group["gate_passed"] == True).sum()),  # noqa: E712
-                "censored": int((group["run_status"] == "censored").sum()),
-                "failed": int((group["run_status"] == "failed").sum()),
-            }
-        )
-
-    grouped = emergence.groupby(["topology", "model_shorthand"]).apply(_agg, include_groups=False).reset_index()
-    return grouped[columns]
 
 
 def critical_mass(runs_df: pd.DataFrame) -> pd.DataFrame:

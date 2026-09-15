@@ -423,6 +423,67 @@ def apply_pilot_bounds(
     return config
 
 
+DIAG_KNOB_KEYS = ("DIAG_N", "DIAG_H", "DIAG_POOL", "DIAG_DECODE", "DIAG_CAP")
+
+
+def campaign_requires_full_diag_knobs(campaign: str, environ: Mapping[str, str] | None = None) -> bool:
+    """Every diag-* campaign except serve smokes (`diag-tech*` / DIAG_TECH_INTERACTIONS)."""
+    env = os.environ if environ is None else environ
+    name = str(campaign)
+    if not name.startswith("diag-"):
+        return False
+    if name.startswith("diag-tech"):
+        return False
+    if env.get("DIAG_TECH_INTERACTIONS"):
+        return False
+    return True
+
+
+def apply_cli_protocol_env(
+    config: dict[str, Any],
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Apply DIAG_* / PILOT_* from the process environment onto a loaded config."""
+    env = os.environ if environ is None else environ
+    campaign_name = str(config["run"]["campaign"])
+    if campaign_requires_full_diag_knobs(campaign_name, env):
+        missing = [key for key in DIAG_KNOB_KEYS if not env.get(key)]
+        if missing:
+            raise ConfigError(
+                "this diag campaign requires DIAG_N, DIAG_H, DIAG_POOL, DIAG_DECODE, and DIAG_CAP; "
+                f"missing {', '.join(missing)}"
+            )
+    diag_h = env.get("DIAG_H")
+    diag_pool = env.get("DIAG_POOL")
+    diag_cap = env.get("DIAG_CAP")
+    diag_n = env.get("DIAG_N")
+    diag_decode = env.get("DIAG_DECODE")
+    if diag_h or diag_pool or diag_cap or diag_n or diag_decode:
+        if not diag_h or not diag_pool:
+            raise ConfigError("DIAG_H and DIAG_POOL must be set together")
+        apply_diag_protocol(
+            config,
+            memory_h=int(diag_h),
+            pool_kind=str(diag_pool),
+            cap_phase1=int(diag_cap) if diag_cap else 1200,
+            population_n=int(diag_n) if diag_n else None,
+            decode=str(diag_decode) if diag_decode else None,
+        )
+    tech_n = env.get("DIAG_TECH_INTERACTIONS")
+    if tech_n:
+        apply_diag_tech_interactions(config, int(tech_n))
+    if campaign_name != "experiment":
+        pilot_cap = env.get("PILOT_CAP_PHASE1")
+        pilot_horizon = env.get("PILOT_PHASE2_HORIZON")
+        if pilot_cap or pilot_horizon:
+            apply_pilot_bounds(
+                config,
+                cap_phase1=int(pilot_cap) if pilot_cap else None,
+                phase2_horizon=int(pilot_horizon) if pilot_horizon else None,
+            )
+    return config
+
+
 
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
     config_path = Path(path) if path is not None else DEFAULT_CONFIG_PATH

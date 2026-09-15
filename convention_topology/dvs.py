@@ -41,12 +41,6 @@ def shannon_entropy(tracker: Mapping[str, Sequence], window: int = DEFAULT_WINDO
     return -sum(p * math.log(p) for p in shares.values() if p > 0)
 
 
-def rounds_to_gate(meta: Mapping, censor_value: int = 5000) -> int:
-    """`t_gate` if the run reached the gate, else the censoring cap."""
-    t_gate = meta.get("t_gate")
-    return t_gate if t_gate is not None else censor_value
-
-
 def incumbent_label(tracker: Mapping[str, Sequence], t_gate: int, window: int = DEFAULT_WINDOW) -> str | None:
     """Modal emission in the trailing `window` interactions at the gate (lexicographic tie-break)."""
     answers = tracker["answers"][:t_gate]

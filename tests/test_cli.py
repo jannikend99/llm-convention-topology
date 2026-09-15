@@ -237,7 +237,11 @@ class DirtyGitCliTests(unittest.TestCase):
         from pathlib import Path
 
         job = (Path(__file__).resolve().parent.parent / "jobs" / "thesis_vllm.slurm").read_text(encoding="utf-8")
-        self.assertIn('SCRATCH="/scratch/shared/${USER}"', job)
+        helper = (Path(__file__).resolve().parent.parent / "jobs" / "_yen_scratch.sh").read_text(encoding="utf-8")
+        self.assertIn("jobs/_yen_scratch.sh", job)
+        self.assertIn("resolve_yen_scratch", job)
+        self.assertIn('SCRATCH="/scratch/shared/${USER}"', helper)
+        self.assertIn("/yen/scratch/shared", helper)
         self.assertIn('VENV="${SCRATCH}/venvs/thesis"', job)
         self.assertIn("${VENV}/bin/python", job)
         self.assertIn("run_main.py", job)
@@ -297,7 +301,6 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn("shm_broadcast", job)
         self.assertIn("vllm_wrap.sh", job)
         self.assertIn("/scratch/shared/%u/vllm/thesis_vllm_%j.out", job)
-        self.assertIn("/yen/scratch/shared", job)
         self.assertIn('GPU_MODEL:A40', job)
         self.assertNotIn("GPU_MODEL:H200", job)
         self.assertNotIn("HF_MODEL", job)
@@ -327,7 +330,7 @@ class DirtyGitCliTests(unittest.TestCase):
         self.assertIn("--disable-custom-all-reduce", job)
         self.assertIn("Keep model YAML extras", job)
         self.assertIn('if key == "MAX_NUM_SEQS" or not os.environ.get(key):', job)
-        self.assertIn("diag-ashery-*", job)
+        self.assertIn('if [[ "${CAMPAIGN}" == diag-* && "${CAMPAIGN}" != diag-tech* ]]; then', job)
         self.assertIn("DIAG_DECODE", job)
         self.assertIn("DIAG_LADDER", job)
         self.assertIn("diag-ashery-parse-", job)
@@ -808,6 +811,29 @@ class DirtyGitCliTests(unittest.TestCase):
                             "emergence:mixing:0-1",
                             "--campaign",
                             "diag-ashery-parse-mock",
+                        ]
+                    )
+        self.assertNotEqual(raised.exception.code, 0)
+
+    def test_run_main_n24_scout_without_diag_env_fails(self):
+        cleared = {
+            "DIAG_N": "",
+            "DIAG_H": "",
+            "DIAG_POOL": "",
+            "DIAG_DECODE": "",
+            "DIAG_CAP": "",
+        }
+        with patch.dict("os.environ", cleared, clear=False):
+            with patch("run_main.require_clean_worktree"):
+                with self.assertRaises(SystemExit) as raised:
+                    run_main.main(
+                        [
+                            "--model",
+                            "mock",
+                            "--task",
+                            "emergence:mixing:0-1",
+                            "--campaign",
+                            "diag-n24-scout",
                         ]
                     )
         self.assertNotEqual(raised.exception.code, 0)

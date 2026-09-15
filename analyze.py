@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from convention_topology.analysis.dispatch import STUBBED_MEMORY, run_all
+from convention_topology.analysis.dispatch import run_all
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -21,18 +21,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--h4", action="store_true")
     parser.add_argument("--gate-summary", action="store_true", dest="gate_summary")
     parser.add_argument("--cross-model", action="store_true", dest="cross_model")
-    parser.add_argument("--memory-decision", action="store_true", dest="memory_decision")
-    parser.add_argument(
-        "--memory-decision-compare",
-        action="store_true",
-        dest="memory_decision_compare",
-    )
     parser.add_argument("--sensitivity-50", action="store_true", dest="sensitivity_50")
     parser.add_argument("--all", action="store_true")
     args = parser.parse_args(argv)
-
-    if args.memory_decision or args.memory_decision_compare:
-        parser.error(STUBBED_MEMORY)
 
     if not args.model and not args.cross_model:
         parser.error("--model is required unless --cross-model")
@@ -48,8 +39,6 @@ def main(argv: list[str] | None = None) -> int:
         h4=args.h4,
         gate_summary=args.gate_summary,
         cross_model=args.cross_model,
-        memory_decision=False,
-        memory_decision_compare=False,
         sensitivity_50=args.sensitivity_50,
         all_=args.all,
     )

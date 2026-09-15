@@ -18,14 +18,9 @@
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
-
-SCRATCH="/scratch/shared/${USER}"
-if [[ ! -d "${SCRATCH}" && -d "/yen/scratch/shared/${USER}" ]]; then
-  SCRATCH="/yen/scratch/shared/${USER}"
-fi
-if SCRATCH_REAL="$(readlink -f "${SCRATCH}" 2>/dev/null)" && [[ -d "${SCRATCH_REAL}" ]]; then
-  SCRATCH="${SCRATCH_REAL}"
-fi
+# shellcheck source=jobs/_yen_scratch.sh
+source "${SLURM_SUBMIT_DIR}/jobs/_yen_scratch.sh"
+resolve_yen_scratch
 VLLM_PIN="${VLLM_PIN:-v0.28.0}"
 DEFAULT_SIF="${SCRATCH}/images/vllm-openai-${VLLM_PIN}.sif"
 HF_HOME="${SCRATCH}/models"
@@ -167,6 +162,8 @@ if [[ "${HAS_TASK}" -eq 1 && "${HAS_TECH_CHECK}" -eq 1 ]]; then
   exit 1
 fi
 
+# DIAG_LADDER hardcodes N/H/pool (including N=24 letters). Do not export it on
+# counted experiment or pilot-run N=48 jobs.
 if [[ -n "${DIAG_LADDER:-}" ]]; then
   : "${MODEL:?set MODEL to a config.yaml shorthand (from --print-jobs or a fit hand flag)}"
   : "${SEED_TO:?set SEED_TO so a missing flag cannot run the full seed grid as technical-smoke}"
@@ -207,7 +204,9 @@ elif [[ "${HAS_TASK}" -eq 1 ]]; then
   MODEL="${COUNTED_MODEL}"
   CAMPAIGN="${COUNTED_CAMPAIGN}"
   export MODEL
-  if [[ "${CAMPAIGN}" == diag-ashery-* || "${CAMPAIGN}" == diag-h12-* || "${CAMPAIGN}" == diag-n48-* || "${CAMPAIGN}" == diag-strings-* ]]; then
+  # Every diag-* campaign except diag-tech* must set DIAG_*. Do not export DIAG_LADDER
+  # on counted or pilot-run N=48 jobs — the ladder hardcodes N/H/pool per cell.
+  if [[ "${CAMPAIGN}" == diag-* && "${CAMPAIGN}" != diag-tech* ]]; then
     : "${DIAG_N:?set DIAG_N for this diag campaign}"
     : "${DIAG_H:?set DIAG_H for this diag campaign}"
     : "${DIAG_POOL:?set DIAG_POOL for this diag campaign}"

@@ -11,9 +11,7 @@ from pathlib import Path
 
 from convention_topology.config import (
     ConfigError,
-    apply_diag_protocol,
-    apply_diag_tech_interactions,
-    apply_pilot_bounds,
+    apply_cli_protocol_env,
     check_campaign_name,
     is_localhost_url,
     load_config,
@@ -33,13 +31,6 @@ from convention_topology.tech_check import DEFAULT_TECH_CHECK_N, run_tech_check
 
 
 REPO_ROOT = Path(__file__).resolve().parent
-
-DIAG_FULL_KNOB_PREFIXES = ("diag-ashery", "diag-h12-", "diag-n48-", "diag-strings-")
-
-
-def _campaign_requires_full_diag_knobs(campaign: str) -> bool:
-    name = str(campaign)
-    return name.startswith(DIAG_FULL_KNOB_PREFIXES)
 
 
 def _positive_int(value: str) -> int:
@@ -161,51 +152,16 @@ def main(argv: list[str] | None = None) -> int:
 
     config = load_config(args.config)
     config["run"]["campaign"] = check_campaign_name(args.campaign)
-    campaign_name = str(config["run"]["campaign"])
-    if _campaign_requires_full_diag_knobs(campaign_name):
-        missing = [
-            key
-            for key in ("DIAG_N", "DIAG_H", "DIAG_POOL", "DIAG_DECODE", "DIAG_CAP")
-            if not os.environ.get(key)
-        ]
-        if missing:
-            parser.error(
-                "this diag campaign requires DIAG_N, DIAG_H, DIAG_POOL, DIAG_DECODE, and DIAG_CAP; "
-                f"missing {', '.join(missing)}"
-            )
-    diag_h = os.environ.get("DIAG_H")
-    diag_pool = os.environ.get("DIAG_POOL")
-    diag_cap = os.environ.get("DIAG_CAP")
-    diag_n = os.environ.get("DIAG_N")
-    diag_decode = os.environ.get("DIAG_DECODE")
-    if diag_h or diag_pool or diag_cap or diag_n or diag_decode:
-        if not diag_h or not diag_pool:
-            parser.error("DIAG_H and DIAG_POOL must be set together")
-        apply_diag_protocol(
-            config,
-            memory_h=int(diag_h),
-            pool_kind=str(diag_pool),
-            cap_phase1=int(diag_cap) if diag_cap else 1200,
-            population_n=int(diag_n) if diag_n else None,
-            decode=str(diag_decode) if diag_decode else None,
+    try:
+        apply_cli_protocol_env(config)
+    except ConfigError as exc:
+        parser.error(str(exc))
+    if os.environ.get("PILOT_CAP_PHASE1") or os.environ.get("PILOT_PHASE2_HORIZON"):
+        print(
+            "[pilot] cap_phase1="
+            f"{config['protocol']['cap_phase1']} phase2_horizon={config['protocol']['phase2_horizon']}",
+            flush=True,
         )
-    tech_n = os.environ.get("DIAG_TECH_INTERACTIONS")
-    if tech_n:
-        apply_diag_tech_interactions(config, int(tech_n))
-    if campaign_name != "experiment":
-        pilot_cap = os.environ.get("PILOT_CAP_PHASE1")
-        pilot_horizon = os.environ.get("PILOT_PHASE2_HORIZON")
-        if pilot_cap or pilot_horizon:
-            apply_pilot_bounds(
-                config,
-                cap_phase1=int(pilot_cap) if pilot_cap else None,
-                phase2_horizon=int(pilot_horizon) if pilot_horizon else None,
-            )
-            print(
-                "[pilot] cap_phase1="
-                f"{config['protocol']['cap_phase1']} phase2_horizon={config['protocol']['phase2_horizon']}",
-                flush=True,
-            )
 
     override = args.base_url or os.environ.get("SERVE_BASE_URL") or os.environ.get("BASE_URL")
 

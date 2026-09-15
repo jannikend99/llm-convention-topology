@@ -40,8 +40,6 @@ from convention_topology.analysis.h3b import h3b_analysis
 from convention_topology.analysis.h4 import h4_analysis
 from convention_topology.persistence import write_analysis_csv, write_analysis_json
 
-STUBBED_MEMORY = "memory-decision analysis is stubbed and cannot run from this CLI"
-
 
 def _write_id(outputs_dir: Path, stem: str, payload: dict[str, Any], table: pd.DataFrame | None = None) -> None:
     write_analysis_json(outputs_dir / f"{stem}.json", payload)
@@ -216,10 +214,6 @@ def run_h4(runs_df, outputs_dir: Path, data_dir: Path | None = None) -> dict[str
     return result
 
 
-def run_gate_table(runs_df, outputs_dir: Path) -> None:
-    run_d1(runs_df, outputs_dir)
-
-
 def run_cross_model(data_dir: Path, outputs_dir: Path) -> dict[str, Any]:
     runs_root = data_dir / "runs"
     models = [p.name for p in runs_root.iterdir() if p.is_dir()] if runs_root.exists() else []
@@ -241,14 +235,9 @@ def run_all(
     h4: bool,
     gate_summary: bool,
     cross_model: bool,
-    memory_decision: bool = False,
-    memory_decision_compare: bool = False,
     sensitivity_50: bool,
     all_: bool,
 ) -> None:
-    if memory_decision or memory_decision_compare:
-        raise SystemExit(STUBBED_MEMORY)
-
     if cross_model:
         run_cross_model(data_dir, outputs_dir)
         if not all_:

@@ -11,13 +11,9 @@
 
 set -euo pipefail
 
-SCRATCH="/scratch/shared/${USER}"
-if [[ ! -d "${SCRATCH}" && -d "/yen/scratch/shared/${USER}" ]]; then
-  SCRATCH="/yen/scratch/shared/${USER}"
-fi
-if SCRATCH_REAL="$(readlink -f "${SCRATCH}" 2>/dev/null)" && [[ -d "${SCRATCH_REAL}" ]]; then
-  SCRATCH="${SCRATCH_REAL}"
-fi
+# shellcheck source=jobs/_yen_scratch.sh
+source "$(cd "$(dirname "$0")" && pwd)/_yen_scratch.sh"
+resolve_yen_scratch
 
 SRC="${SCRATCH}/runs"
 OUT="${SCRATCH}/exports"

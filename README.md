@@ -14,7 +14,9 @@ Counted path: local OpenAI-compatible vLLM (`provider: openai_compat`) or `mock`
 | Gate | first t≥144 with ≥137/144 successes, or cap 5000 |
 | k | {2,4,6,8,10,12} |
 | Seeds | 32 per cell, `sampling_plan=fixed_attempted` |
-| Study 2 | prepared, `t_cm_start=0` |
+| Study 2 | prepared, `t_cm_start=0`, horizon 1000 |
+
+`jobs.models` keepers: `gemma4_31b`, `olmo31_32b`, `qwen38_27b`, `glm4_32b`. Extra entries under `models:` are a catalog (smoke `gemma4_e2b`, think variants). YAML default `run.campaign` is `experiment` with cap 5000. Scout/fit jobs must pass `--campaign` plus `PILOT_*` / `DIAG_*`. Changing `cap_phase1` changes the protocol fingerprint — use a new campaign name.
 
 ## Commands
 
@@ -26,15 +28,15 @@ python run_main.py --model mock --campaign technical-smoke --artifact-root /tmp/
 python run_one.py --program emergence --model mock --topology mixing --seed-index 0 --artifact-root /tmp/campaign
 ```
 
-`--print-queue` prints the flattened `--task` list. `--print-jobs` is a deprecation error. Fit/timing jobs use `--campaign pilot-run` so artifacts are not `experiment`. Queue jobs require explicit `--campaign`.
+`--print-queue` prints the flattened `--task` list. `--print-jobs` is a deprecation error. Fit/timing jobs use `--campaign pilot-run` so artifacts are not `experiment`. Queue jobs require explicit `--campaign`. Every `diag-*` campaign except `diag-tech*` requires `DIAG_N`, `DIAG_H`, `DIAG_POOL`, `DIAG_DECODE`, and `DIAG_CAP`. Do not export `DIAG_LADDER` on counted or `pilot-run` jobs.
 
-Yen: clone/pull `/scratch/shared/jendress/exp/llm-convention-topology`, then from the repo root in the Jupyter Terminal:
+Yen: clone/pull `/scratch/shared/$USER/exp/llm-convention-topology`, then from the repo root in the Jupyter Terminal:
 
 ```bash
 sbatch --export=ALL jobs/thesis_vllm.slurm -- \
   --campaign technical-smoke --model gemma4_e2b --task emergence:mixing:0-1
 ```
 
-Operator packet: thesis `specs/yen-configuration.md` and `specs/counted-job-queue.md`. This package does not submit jobs. `notebooks/yen_jobs.ipynb` is archived.
+Operator packet: thesis `specs/yen-configuration.md` and `specs/counted-job-queue.md`. This package does not submit jobs. Ashery ladder notes: `archive/ops/diag-ashery-ladder.md`. Pack downloads: `bash jobs/pack_yen_runs.sh`.
 
-Campaign artifacts: `data/runs/<campaign>/` on a laptop (gitignored), or `--artifact-root` on scratch (`/scratch/shared/jendress/runs/<campaign>/`; do not append the campaign name twice).
+Campaign artifacts: laptop default `data/runs/<campaign>/` (gitignored). Do not use a leftover repo-root `runs/` tree. On Yen pass `--artifact-root /scratch/shared/$USER/runs/<campaign>/` (do not append the campaign name twice).

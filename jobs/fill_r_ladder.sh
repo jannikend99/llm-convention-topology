@@ -12,12 +12,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "${ROOT}"
+# shellcheck source=jobs/_yen_scratch.sh
+source "${ROOT}/jobs/_yen_scratch.sh"
+resolve_yen_scratch
 
 DRY=0
 [[ "${1:-}" == "--dry-run" ]] && DRY=1
 
 WALL="${FILL_LADDER_WALL:-25:00}"
-SCRATCH="${SCRATCH:-/scratch/shared/${USER}}"
 MANIFEST_DIR="${SCRATCH}/runs/fill-ladder"
 MANIFEST="${MANIFEST_DIR}/manifest.jsonl"
 SLURM_FILE="${ROOT}/jobs/thesis_vllm.slurm"
