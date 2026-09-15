@@ -30,3 +30,8 @@ jobs/*.err
 .DS_Store
 .idea/
 .vscode/
+
+# Graphify: keep the map, not the AST cache or dated copies
+graphify-out/cache/
+graphify-out/cost.json
+graphify-out/20*/
