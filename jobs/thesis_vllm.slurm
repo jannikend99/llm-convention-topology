@@ -1,6 +1,6 @@
 #!/bin/bash
 # Thesis counted-path job. vLLM pin: v0.28.0 (stable as of 2026-09-11).
-# Keeper / counted / pilot-run submit: sbatch -G 2 --mem=128G (Yen fill freeze 2026-09-14, per-model R).
+# Keeper / counted / pilot-run submit: sbatch -G 2 --mem=128G (Yen fill freeze 2026-09-14, Gemma R=48 on 2026-09-15).
 # Header -G 1 --mem=64G stays for technical-smoke E2B.
 # Not the repo-root Ollama smoke.
 #SBATCH --job-name=thesis-vllm
