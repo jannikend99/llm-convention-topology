@@ -1108,3 +1108,42 @@ def test_watch_progress_bars_study_kpis_and_live_fields(campaign: Path):
     source = (REPO / "convention_topology" / "health.py").read_text(encoding="utf-8")
     assert "last_checkpoint_t" in source
     assert "n_retries" in source
+    assert "vertical_overflow" in source
+    assert "live_run_ids[:32]" not in source
+
+
+def test_watch_lists_all_live_cells(campaign: Path):
+    ids = [f"live-{i}" for i in range(40)]
+    _heartbeat(
+        campaign,
+        "1001",
+        _hb(tasks=["emergence:mixing:0-40"], live_run_ids=ids, live_runs=40),
+    )
+    for i, run_id in enumerate(ids):
+        _meta(
+            campaign,
+            "gemma4_31b",
+            "mixing",
+            run_id,
+            {
+                "run_id": run_id,
+                "model_shorthand": "gemma4_31b",
+                "program": "emergence",
+                "topology": "mixing",
+                "seed_index": i,
+                "run_status": "in_progress",
+                "n_interactions": i,
+            },
+        )
+    snap = read_health_snapshot(
+        campaign,
+        "gemma4_31b",
+        now=NOW,
+        cap_phase1=5000,
+        phase2_horizon=1000,
+    )
+    text = _export_layout(snap)
+    assert "Live cells (40)" in text
+    live_block = text.split("Live cells")[-1]
+    assert "39" in live_block
+    assert live_block.count("mixi") >= 40

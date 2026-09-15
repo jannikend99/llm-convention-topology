@@ -436,6 +436,26 @@ def format_health_text(snap: HealthSnapshot) -> str:
     )
 
 
+def _live_cell_run_ids(snap: HealthSnapshot) -> list[Any]:
+    if snap.live_run_ids:
+        ids = list(snap.live_run_ids)
+    else:
+        ids = [
+            row.get("run_id")
+            for row in snap.sidecars
+            if row.get("run_status") == "in_progress"
+        ]
+    by_id = {row.get("run_id"): row for row in snap.sidecars}
+
+    def sort_key(run_id: Any) -> tuple[str, int, str]:
+        row = by_id.get(run_id) or {}
+        seed = row.get("seed_index")
+        seed_n = int(seed) if isinstance(seed, (int, float)) else 10**9
+        return (str(row.get("topology") or ""), seed_n, str(run_id or ""))
+
+    return sorted(ids, key=sort_key)
+
+
 def render_watch_layout(snap: HealthSnapshot, now: datetime | None = None) -> RenderableType:
     when = now or _wall_now()
     header = Table.grid(padding=(0, 2))
@@ -672,7 +692,9 @@ def render_watch_layout(snap: HealthSnapshot, now: datetime | None = None) -> Re
     else:
         recent.add_row("-", "-", "-")
 
-    live = Table(title="Live cells", expand=True)
+    by_id = {row.get("run_id"): row for row in snap.sidecars}
+    rows = _live_cell_run_ids(snap)
+    live = Table(title=f"Live cells ({len(rows)})", expand=True)
     live.add_column("topology")
     live.add_column("seed")
     live.add_column("program")
@@ -683,10 +705,6 @@ def render_watch_layout(snap: HealthSnapshot, now: datetime | None = None) -> Re
     live.add_column("error_class")
     live.add_column("status")
     live.add_column("run_id")
-    by_id = {row.get("run_id"): row for row in snap.sidecars}
-    rows = snap.live_run_ids[:32] if snap.live_run_ids else [
-        row.get("run_id") for row in snap.sidecars if row.get("run_status") == "in_progress"
-    ][:32]
     if not rows:
         live.add_row("-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
     else:
@@ -760,6 +778,7 @@ def run_health_cli(
                 render_watch_layout(snap, now=now or _wall_now()),
                 refresh_per_second=1 / WATCH_REFRESH_S,
                 console=None,
+                vertical_overflow="visible",
             ) as live:
                 while True:
                     sleeper(WATCH_REFRESH_S)
