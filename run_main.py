@@ -27,6 +27,7 @@ from convention_topology.orchestration import (
 )
 from convention_topology.health import run_health_cli
 from convention_topology.persistence import campaign_root
+from convention_topology.reopen_failed import ReopenFailedError, reopen_failed
 from convention_topology.tech_check import DEFAULT_TECH_CHECK_N, run_tech_check
 
 
@@ -60,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tech-check-n", type=_positive_int, default=None)
     parser.add_argument("--health", action="store_true")
     parser.add_argument("--watch", action="store_true")
+    parser.add_argument("--reopen-failed", action="store_true")
+    parser.add_argument("--apply", action="store_true")
     parser.add_argument("--task", action="append", default=[], dest="tasks")
     parser.add_argument("--model", default=None)
     parser.add_argument("--config", default=None)
@@ -91,6 +94,19 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--watch cannot be combined with --print-queue")
     if args.tech_check_n is not None and not args.tech_check:
         parser.error("--tech-check-n requires --tech-check")
+    if args.apply and not args.reopen_failed:
+        parser.error("--apply requires --reopen-failed")
+    reopen_blockers = (
+        ("--task", bool(args.tasks)),
+        ("--health", args.health),
+        ("--watch", args.watch),
+        ("--tech-check", args.tech_check),
+        ("--print-queue", args.print_queue),
+    )
+    if args.reopen_failed:
+        for flag, on in reopen_blockers:
+            if on:
+                parser.error(f"--reopen-failed cannot be combined with {flag}")
 
     if args.tech_check:
         if not args.model:
@@ -136,6 +152,42 @@ def main(argv: list[str] | None = None) -> int:
             model_shorthand=args.model,
             watch=bool(args.watch),
         )
+
+    if args.reopen_failed:
+        if not args.campaign:
+            parser.error("--campaign is required")
+        if not args.model:
+            parser.error("--model is required")
+        root = campaign_root(args.artifact_root, args.campaign, REPO_ROOT)
+        try:
+            rows = reopen_failed(
+                root,
+                args.model,
+                campaign=args.campaign,
+                apply=bool(args.apply),
+            )
+        except ReopenFailedError as exc:
+            print(str(exc), flush=True)
+            return 2
+        mode = "applied" if args.apply else "dry-run"
+        eligible = [row for row in rows if not row.get("skipped")]
+        skipped = [row for row in rows if row.get("skipped")]
+        print(f"reopen-failed {mode} model={args.model} campaign={args.campaign}", flush=True)
+        print(f"eligible {len(eligible)} skipped {len(skipped)}", flush=True)
+        for row in eligible:
+            print(
+                f"  {row.get('program')} {row.get('topology')} seed={row.get('seed_index')} "
+                f"t={row.get('last_checkpoint_t')} {row.get('run_id')}",
+                flush=True,
+            )
+        for row in skipped:
+            print(
+                f"  skip {row.get('skipped')} {row.get('run_id')} {row.get('path')}",
+                flush=True,
+            )
+        if not args.apply and eligible:
+            print("pass --apply to set those sidecars to interrupted", flush=True)
+        return 0
 
     if not args.tasks:
         parser.error("at least one --task is required")
