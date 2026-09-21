@@ -79,7 +79,7 @@ submit_chain() {
       'artifact_root': sys.argv[7], 'wall': sys.argv[8], 'gpu': 'H200', 'tp': 1,
       'max_model_len': int(sys.argv[9]),
     }))" "${jid}" "${model}" "${r}" "${seqs}" "${inflight}" "${campaign}" "${artifact}" "${WALL}" "${MAX_MODEL_LEN}" >> "${MANIFEST}"
-    unset FILL_MAX_CONCURRENT_RUNS FILL_MAX_NUM_SEQS FILL_IN_FLIGHT_LIMIT TP MAX_MODEL_LEN
+    unset FILL_MAX_CONCURRENT_RUNS FILL_MAX_NUM_SEQS FILL_IN_FLIGHT_LIMIT TP
     echo "submitted ${jid}"
   done
   if [[ "${DRY}" -eq 0 && -n "${prev}" ]]; then
