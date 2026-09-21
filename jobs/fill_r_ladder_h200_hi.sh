@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Short H200 confirm for the open keepers. One GPU (tp=1).
-# Optimistic single step, not the full ladder:
-#   Qwen R=192 (128/160/192 already produced attempts; this pairs JSON/KV on a fresh run)
-#   GLM  R=224 (160/192/224 wrote no attempts; same high step, new campaign)
+# Short H200 ladder for GLM only. One GPU (tp=1).
+# Qwen already has attempts at 128/160/192; evaluate that manifest, do not rerun it.
+# GLM wrote no attempts. Three optimistic steps, not a walk up from the A40 freeze (82):
+#   160 / 192 / 224
+# Each step sets R, max_num_seqs=2R, in_flight=2R+2, tp=1, max_model_len=2048.
 # Wall 40 min. vLLM start is ~10 min; USR1 fires 5 min before the wall.
 # Does not touch fill-ladder-h200-qwen-glm/ or config.yaml.
 #
@@ -82,13 +83,13 @@ submit_chain() {
     echo "submitted ${jid}"
   done
   if [[ "${DRY}" -eq 0 && -n "${prev}" ]]; then
-    echo "after both finish:"
+    echo "after the chain:"
     echo "  FILL_LADDER_MANIFEST=${MANIFEST} ${SCRATCH}/venvs/thesis/bin/python jobs/fill_r_ladder_eval.py"
   fi
 }
 
-echo "=== H200 hi (qwen 192 then glm 224) ==="
-submit_chain qwen38_27b:192 glm4_32b:224
+echo "=== H200 GLM 160 / 192 / 224 ==="
+submit_chain glm4_32b:160 glm4_32b:192 glm4_32b:224
 
 if [[ "${DRY}" -eq 0 ]]; then
   echo "manifest ${MANIFEST}"
