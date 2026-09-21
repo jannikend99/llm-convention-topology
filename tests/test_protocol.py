@@ -46,7 +46,7 @@ class ProtocolIdentityTests(unittest.TestCase):
         self.assertEqual(a, b)
         self.assertNotEqual(a, environment_seed(1, "emergence", "lattice", None, 0))
         tags = [substream(a, tag) for tag in ENVIRONMENT_TAGS]
-        self.assertEqual(len(set(tags)), 3)
+        self.assertEqual(len(set(tags)), 4)
 
     def test_study1_cm_k_is_null(self):
         config = load_config()
@@ -57,8 +57,8 @@ class ProtocolIdentityTests(unittest.TestCase):
     def test_study2_grid(self):
         config = load_config()
         rows = cell_grid(config, program="cm")
-        self.assertEqual(len(rows), 5 * 6 * 32)
-        self.assertEqual({row["cm_k"] for row in rows}, {2, 4, 6, 8, 10, 12})
+        self.assertEqual(len(rows), 5 * 3 * 32)
+        self.assertEqual({row["cm_k"] for row in rows}, {5, 10, 14})
 
     def test_integer_gate(self):
         outcomes = [1] * 136 + [0] * 8

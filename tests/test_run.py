@@ -9,7 +9,8 @@ from tempfile import TemporaryDirectory
 
 import yaml
 
-from convention_topology.campaign import ensure_campaign_files
+from convention_topology.campaign import CampaignError, ensure_campaign_files
+from convention_topology.extend_bounds import ExtendBoundsError, extend_bounds
 from convention_topology.config import apply_diag_protocol, load_config, resolve_model
 from convention_topology.json_output import ParseError
 from convention_topology.llm import AsyncClientAdapter, MockLLMClient, RunFailedError
@@ -106,6 +107,89 @@ class RecordingTests(unittest.TestCase):
             second = load_config()
             second["serve"]["base_url"] = "http://127.0.0.1:41222/v1"
             ensure_campaign_files(root, second)
+            second["protocol"]["cap_phase1"] = 4000
+            ensure_campaign_files(root, second)
+            second["protocol"]["temperature"] = 0.2
+            with self.assertRaises(CampaignError):
+                ensure_campaign_files(root, second)
+
+    def test_censored_emergence_extends_to_new_cap(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_EMERGENCE, root, n=8, max_phase1_interactions=2, gate_window=144)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            paths = execute_run(cfg, client, campaign_dir=root)
+            self.assertEqual(read_meta(paths.meta_path)["run_status"], "censored")
+            self.assertEqual(read_meta(paths.meta_path)["n_interactions"], 2)
+            execute_run(cfg, client, campaign_dir=root)
+            self.assertEqual(read_meta(paths.meta_path)["n_interactions"], 2)
+            cfg.max_phase1_interactions = 4
+            rows = extend_bounds(
+                root, cfg.model_shorthand, cap_phase1=4, phase2_horizon=1500, apply=True
+            )
+            self.assertEqual(len(rows), 1)
+            self.assertIsNone(rows[0]["skipped"])
+            execute_run(cfg, client, campaign_dir=root)
+            done = read_meta(paths.meta_path)
+            self.assertEqual(done["n_interactions"], 4)
+            self.assertEqual(done["run_status"], "censored")
+            self.assertEqual(done["bound_extensions"][0]["previous"], 2)
+            self.assertEqual(done["bound_extensions"][0]["new"], 4)
+
+    def test_interrupted_resumes_when_horizon_rises(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=2)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            seen = {"n": 0}
+
+            def hook(kind: str) -> None:
+                if kind == "after_interaction":
+                    seen["n"] += 1
+                    if seen["n"] == 1:
+                        raise StopRequested("killed")
+
+            paths = execute_run(cfg, client, campaign_dir=root, on_stop=hook)
+            self.assertEqual(read_meta(paths.meta_path)["run_status"], "interrupted")
+            cfg.phase2_horizon = 3
+            execute_run(cfg, client, campaign_dir=root)
+            done = read_meta(paths.meta_path)
+            self.assertEqual(done["run_status"], "completed")
+            self.assertEqual(done["n_interactions"], 3)
+
+    def test_decreased_horizon_blocks_resume(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_CM, root, n=8, phase2_horizon=3)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            seen = {"n": 0}
+
+            def hook(kind: str) -> None:
+                if kind == "after_interaction":
+                    seen["n"] += 1
+                    if seen["n"] == 1:
+                        raise StopRequested("killed")
+
+            paths = execute_run(cfg, client, campaign_dir=root, on_stop=hook)
+            cfg.phase2_horizon = 1
+            with self.assertRaises(RunFailedError) as ctx:
+                execute_run(cfg, client, campaign_dir=root)
+            self.assertEqual(ctx.exception.error_class, "config")
 
     def test_cm_turns_do_not_http(self):
         with TemporaryDirectory() as tmp:
@@ -615,10 +699,107 @@ class ResumeTests(unittest.TestCase):
                     update_dict(behind.simulation[p2b], a2, a1, payoff)
                     update_tracker(behind.tracker, p1b, p2b, a1, a2, payoff)
             self.assertEqual(len(behind.tracker["outcome"]), 1)
-            _replay_interactions(behind, records, cfg.options)
+            _replay_interactions(behind, records, cfg.options, cfg.program)
             self.assertEqual(behind.rng_pairing.getstate(), control.rng_pairing.getstate())
             self.assertEqual(behind.rng_option.getstate(), control.rng_option.getstate())
             self.assertEqual(_pair(behind.simulation, behind.rng_pairing), _pair(control.simulation, control.rng_pairing))
+
+    def test_emergence_replay_consumes_two_option_shuffles(self):
+        from convention_topology.run import _init_state, _interaction_option_orders, _pair, _replay_interactions
+        from convention_topology.tracker import update_dict, update_tracker
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_EMERGENCE, root, n=8, max_phase1_interactions=3)
+            control = _init_state(cfg)
+            behind = _init_state(cfg)
+            records = []
+            for t in range(1, 4):
+                p1, p2 = _pair(control.simulation, control.rng_pairing)
+                order_p1, order_p2 = _interaction_option_orders(cfg.program, cfg.options, control.rng_option)
+                a1 = a2 = cfg.options[0]
+                payoff = 100
+                control.simulation[p1]["interactions"].append(p2)
+                control.simulation[p2]["interactions"].append(p1)
+                update_dict(control.simulation[p1], a1, a2, payoff)
+                update_dict(control.simulation[p2], a2, a1, payoff)
+                update_tracker(control.tracker, p1, p2, a1, a2, payoff)
+                records.append(
+                    {
+                        "record_type": "interaction",
+                        "t": t,
+                        "p1": p1,
+                        "p2": p2,
+                        "label_p1": a1,
+                        "label_p2": a2,
+                        "payoff_p1": payoff,
+                        "option_order_p1": list(order_p1),
+                        "option_order_p2": list(order_p2),
+                    }
+                )
+                if t == 1:
+                    p1b, p2b = _pair(behind.simulation, behind.rng_pairing)
+                    _interaction_option_orders(cfg.program, cfg.options, behind.rng_option)
+                    behind.simulation[p1b]["interactions"].append(p2b)
+                    behind.simulation[p2b]["interactions"].append(p1b)
+                    update_dict(behind.simulation[p1b], a1, a2, payoff)
+                    update_dict(behind.simulation[p2b], a2, a1, payoff)
+                    update_tracker(behind.tracker, p1b, p2b, a1, a2, payoff)
+            _replay_interactions(behind, records, cfg.options, cfg.program)
+            self.assertEqual(behind.rng_option.getstate(), control.rng_option.getstate())
+
+    def test_emergence_partners_get_separate_option_orders(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_EMERGENCE, root, n=8, max_phase1_interactions=4)
+            client = MockLLMClient(
+                policy="always",
+                rng=random.Random(0),
+                options=list(cfg.options),
+                always_label=cfg.options[0],
+            )
+            paths = execute_run(cfg, client, campaign_dir=root)
+            events = read_events(paths.events_path)
+            interactions = [row for row in events if row["record_type"] == "interaction"]
+            self.assertTrue(interactions)
+            self.assertTrue(any(row["option_order_p1"] != row["option_order_p2"] for row in interactions))
+
+    def test_cm_committed_string_swaps_across_seed_indexes(self):
+        from convention_topology.run import _init_state
+        from convention_topology.seeds import substream
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = load_config()
+            files = ensure_campaign_files(root, config)
+            spec = resolve_model(config, "mock")
+            seen_committed = set()
+            for seed_index in range(24):
+                cfg = build_run_config(
+                    config,
+                    spec,
+                    program=PROGRAM_CM,
+                    topology="mixing",
+                    seed_index=seed_index,
+                    cm_k=2,
+                    pool_labels=files["pool"]["labels"],
+                    pool_sha256=files["pool"]["sha256"],
+                    code_commit="test",
+                    artifact_root=str(root),
+                )
+                state = _init_state(cfg)
+                incumbent = cfg.options[cfg.incumbent_index]
+                committed = state.convergence["committed_to"]
+                self.assertEqual(committed, cfg.options[1 - cfg.incumbent_index])
+                self.assertEqual(state.convergence["incumbent_label"], incumbent)
+                self.assertNotEqual(incumbent, committed)
+                flexible = next(player for player in state.simulation.values() if not player["committed_tag"])
+                self.assertEqual(flexible["my_history"], [incumbent] * cfg.memory_size)
+                agent_rng = random.Random(substream(cfg.environment_seed, "committed"))
+                expected_ids = agent_rng.sample(list(state.simulation.keys()), k=cfg.cm_k)
+                self.assertEqual(sorted(state.committed_ids), sorted(expected_ids))
+                seen_committed.add(committed)
+            self.assertEqual(seen_committed, set(files["pool"]["labels"][:2]))
 
 
 class JobForensicsTests(unittest.TestCase):

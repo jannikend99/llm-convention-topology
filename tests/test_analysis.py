@@ -106,7 +106,7 @@ def _write_run(root: Path, *, model: str, topology: str, run_id: str, meta: dict
 class StreamLoadTests(unittest.TestCase):
     def test_window_and_k_grid(self):
         self.assertEqual(DEFAULT_WINDOW, 144)
-        self.assertEqual(K_GRID, [2, 4, 6, 8, 10, 12])
+        self.assertEqual(K_GRID, [5, 10, 14])
         self.assertNotEqual(K_GRID, list(range(1, 7)))
 
     def test_matching_artifacts_load(self):
@@ -397,9 +397,9 @@ class H3H4Tests(unittest.TestCase):
             self.assertNotIn(POOL[0], [k for k, v in result["counts"].items() if v])
 
     def test_gam_grid_not_one_to_six(self):
-        self.assertEqual(K_GRID[0], 2)
+        self.assertEqual(K_GRID[0], 5)
+        self.assertNotIn(2, K_GRID)
         self.assertNotIn(1, K_GRID)
-        self.assertNotIn(3, K_GRID)
 
 
 class FunnelAndSmokeTests(unittest.TestCase):

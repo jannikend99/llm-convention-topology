@@ -55,6 +55,7 @@ SIDECAR_FIELDS = (
     "gate_window",
     "cap_phase1",
     "phase2_horizon",
+    "bound_extensions",
     "retry_max_attempts",
     "temperature",
     "max_tokens",

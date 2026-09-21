@@ -10,7 +10,7 @@ from convention_topology.analysis.h3a import K_GRID
 class AnalysisIdentityTests(unittest.TestCase):
     def test_window_and_k_grid(self):
         self.assertEqual(DEFAULT_WINDOW, 144)
-        self.assertEqual(K_GRID, [2, 4, 6, 8, 10, 12])
+        self.assertEqual(K_GRID, [5, 10, 14])
 
     def test_job_file_exists(self):
         path = Path(__file__).resolve().parent.parent / "jobs" / "thesis_vllm.slurm"

@@ -559,8 +559,8 @@ class DirtyGitCliTests(unittest.TestCase):
                     ]
                 )
         self.assertEqual(code, 0)
-        self.assertEqual(captured["cap"], 5000)
-        self.assertEqual(captured["horizon"], 1000)
+        self.assertEqual(captured["cap"], 1500)
+        self.assertEqual(captured["horizon"], 1500)
 
     def test_in_progress_sidecar_calls_execute_run(self):
         import asyncio

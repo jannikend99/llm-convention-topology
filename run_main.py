@@ -27,6 +27,7 @@ from convention_topology.orchestration import (
 )
 from convention_topology.health import run_health_cli
 from convention_topology.persistence import campaign_root
+from convention_topology.extend_bounds import ExtendBoundsError, extend_bounds
 from convention_topology.reopen_failed import ReopenFailedError, reopen_failed
 from convention_topology.tech_check import DEFAULT_TECH_CHECK_N, run_tech_check
 
@@ -62,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--health", action="store_true")
     parser.add_argument("--watch", action="store_true")
     parser.add_argument("--reopen-failed", action="store_true")
+    parser.add_argument("--extend-bounds", action="store_true")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--task", action="append", default=[], dest="tasks")
     parser.add_argument("--model", default=None)
@@ -94,8 +96,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--watch cannot be combined with --print-queue")
     if args.tech_check_n is not None and not args.tech_check:
         parser.error("--tech-check-n requires --tech-check")
-    if args.apply and not args.reopen_failed:
-        parser.error("--apply requires --reopen-failed")
+    if args.apply and not (args.reopen_failed or args.extend_bounds):
+        parser.error("--apply requires --reopen-failed or --extend-bounds")
+    if args.reopen_failed and args.extend_bounds:
+        parser.error("--reopen-failed cannot be combined with --extend-bounds")
     reopen_blockers = (
         ("--task", bool(args.tasks)),
         ("--health", args.health),
@@ -103,10 +107,12 @@ def main(argv: list[str] | None = None) -> int:
         ("--tech-check", args.tech_check),
         ("--print-queue", args.print_queue),
     )
-    if args.reopen_failed:
+    for flag_name, active in (("--reopen-failed", args.reopen_failed), ("--extend-bounds", args.extend_bounds)):
+        if not active:
+            continue
         for flag, on in reopen_blockers:
             if on:
-                parser.error(f"--reopen-failed cannot be combined with {flag}")
+                parser.error(f"{flag_name} cannot be combined with {flag}")
 
     if args.tech_check:
         if not args.model:
@@ -187,6 +193,41 @@ def main(argv: list[str] | None = None) -> int:
             )
         if not args.apply and eligible:
             print("pass --apply to set those sidecars to interrupted", flush=True)
+        return 0
+
+    if args.extend_bounds:
+        if not args.campaign:
+            parser.error("--campaign is required")
+        if not args.model:
+            parser.error("--model is required")
+        config = load_config(args.config)
+        root = campaign_root(args.artifact_root, args.campaign, REPO_ROOT)
+        try:
+            rows = extend_bounds(
+                root,
+                args.model,
+                cap_phase1=int(config["protocol"]["cap_phase1"]),
+                phase2_horizon=int(config["protocol"]["phase2_horizon"]),
+                apply=bool(args.apply),
+            )
+        except ExtendBoundsError as exc:
+            print(str(exc), flush=True)
+            return 2
+        mode = "applied" if args.apply else "dry-run"
+        eligible = [row for row in rows if not row.get("skipped")]
+        skipped = [row for row in rows if row.get("skipped")]
+        print(f"extend-bounds {mode} model={args.model} campaign={args.campaign}", flush=True)
+        print(f"eligible {len(eligible)} skipped {len(skipped)}", flush=True)
+        for row in eligible:
+            print(
+                f"  {row.get('program')} {row.get('topology')} seed={row.get('seed_index')} "
+                f"{row.get('field')} {row.get('previous')}->{row.get('new')} t={row.get('t')} {row.get('run_id')}",
+                flush=True,
+            )
+        for row in skipped:
+            print(f"  skip {row.get('skipped')} {row.get('run_id')}", flush=True)
+        if not args.apply and eligible:
+            print("pass --apply to set those sidecars to in_progress", flush=True)
         return 0
 
     if not args.tasks:

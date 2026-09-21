@@ -9,7 +9,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from convention_topology.config import TOPOLOGIES, config_hash
+from convention_topology.config import BOUND_PROTOCOL_KEYS, TOPOLOGIES, config_hash
 from convention_topology.networks import adjacency_hash, adjacency_pairs, get_interaction_network, graph_stats
 from convention_topology.pool import draw_pool, pool_sha256
 from convention_topology.seeds import graph_seed as derive_graph_seed
@@ -28,6 +28,10 @@ def campaign_identity_config(config: Mapping[str, Any]) -> dict[str, Any]:
     serve = payload.get("serve")
     if isinstance(serve, dict) and "base_url" in serve:
         serve["base_url"] = CAMPAIGN_SERVE_BASE_URL
+    protocol = payload.get("protocol")
+    if isinstance(protocol, dict):
+        for key in BOUND_PROTOCOL_KEYS:
+            protocol.pop(key, None)
     return payload
 
 

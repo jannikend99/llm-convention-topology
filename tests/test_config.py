@@ -42,7 +42,7 @@ class ConfigLockTests(unittest.TestCase):
     def test_required_sections_and_identities(self):
         self.assertEqual(tuple(self.config["network"]["topologies"]), TOPOLOGIES)
         self.assertNotIn("complete", self.config["network"]["topologies"])
-        self.assertEqual(self.config["minority"]["k_set"], [2, 4, 6, 8, 10, 12])
+        self.assertEqual(self.config["minority"]["k_set"], [5, 10, 14])
         self.assertEqual(self.config["run"]["attempted_per_cell"], 32)
         self.assertEqual(self.config["run"]["sampling_plan"], "fixed_attempted")
         self.assertEqual(self.config["run"]["checkpoint_every"], 1)
@@ -359,7 +359,7 @@ class BannedConfigTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             apply_pilot_bounds(raw, cap_phase1=100)
         with self.assertRaises(ConfigError):
-            apply_pilot_bounds(raw, phase2_horizon=1001)
+            apply_pilot_bounds(raw, phase2_horizon=1501)
 
 
 class FillOverrideTests(unittest.TestCase):

@@ -15,7 +15,8 @@ import yaml
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
 
 TOPOLOGIES = ("mixing", "random_regular", "lattice", "watts_strogatz", "barabasi_albert")
-K_SET = (2, 4, 6, 8, 10, 12)
+K_SET = (5, 10, 14)
+BOUND_PROTOCOL_KEYS = ("cap_phase1", "phase2_horizon")
 SERVE_PROFILE_KEYS = (
     "dtype",
     "quantization",
@@ -56,12 +57,12 @@ LOCK_PROTOCOL = {
     "W_cm": 2,
     "gate_threshold": 0.95,
     "gate_window": 144,
-    "cap_phase1": 5000,
-    "phase2_horizon": 1000,
+    "cap_phase1": 1500,
+    "phase2_horizon": 1500,
     "rewards_mismatch": -50,
     "rewards_match": 100,
     "success_rule": "payoff_gt_5",
-    "retry_max_attempts": 3,
+    "retry_max_attempts": 5,
     "temperature": 0.5,
 }
 
@@ -148,7 +149,7 @@ def _reject_banned(raw: Mapping[str, Any]) -> None:
     minority = raw.get("minority") or {}
     k_set = list(minority.get("k_set") or [])
     if k_set == [1, 2, 3, 4, 5, 6] or k_set == list(range(1, 7)):
-        raise ConfigError("k in {1..6} is banned; locked k_set is [2, 4, 6, 8, 10, 12]")
+        raise ConfigError("k in {1..6} is banned; locked k_set is [5, 10, 14]")
     run = raw.get("run") or {}
     if run.get("checkpoint_every") == 50:
         raise ConfigError("checkpoint_every 50 is banned; locked value is 1")
@@ -403,7 +404,7 @@ def apply_pilot_bounds(
     cap_phase1: int | None = None,
     phase2_horizon: int | None = None,
 ) -> dict[str, Any]:
-    """Shorter stop bounds for campaign `pilot-run` only. Counted YAML stays 5000 / 1000."""
+    """Shorter stop bounds for campaign `pilot-run` only. Counted YAML stays 1500 / 1500."""
     campaign = str(config["run"]["campaign"])
     if campaign != "pilot-run" and not campaign.startswith("pilot-run"):
         raise ConfigError("PILOT_* bounds require a campaign name starting with pilot-run")
@@ -564,8 +565,11 @@ def apply_serve_base_url(config: dict[str, Any], url: str) -> None:
 
 
 def protocol_fingerprint(config: Mapping[str, Any]) -> str:
+    protocol = _plain(config["protocol"])
+    for key in BOUND_PROTOCOL_KEYS:
+        protocol.pop(key, None)
     payload = {
-        "protocol": _plain(config["protocol"]),
+        "protocol": protocol,
         "modules": trajectory_module_hashes(),
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)

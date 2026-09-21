@@ -17,7 +17,7 @@ from statsmodels.tools.sm_exceptions import PerfectSeparationError
 
 MIN_CELL_N = 8
 MIN_TOPOLOGIES = 2
-DEFAULT_EXPECTED_CM_KS = (2, 4, 6, 8, 10, 12)
+DEFAULT_EXPECTED_CM_KS = (5, 10, 14)
 
 _FIT_EXCEPTIONS = (LinAlgError, PerfectSeparationError, ValueError)
 

@@ -78,11 +78,11 @@ def _format_unknown(value: int | float | None) -> str:
 
 def _load_protocol_caps() -> tuple[int | None, int | None]:
     try:
-        run = load_config()["run"]
+        protocol = load_config()["protocol"]
     except (ConfigError, OSError, KeyError, TypeError):
         return None, None
-    cap = run.get("cap_phase1")
-    horizon = run.get("phase2_horizon")
+    cap = protocol.get("cap_phase1")
+    horizon = protocol.get("phase2_horizon")
     cap_i = int(cap) if isinstance(cap, int) and cap > 0 else None
     horizon_i = int(horizon) if isinstance(horizon, int) and horizon > 0 else None
     return cap_i, horizon_i

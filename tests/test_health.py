@@ -1082,19 +1082,19 @@ def test_watch_progress_bars_study_kpis_and_live_fields(campaign: Path):
             "run_status": "completed",
             "prepared_state_valid": False,
             "n_interactions": 400,
-            "phase2_horizon": 1000,
+            "phase2_horizon": 1500,
         },
     )
     snap = read_health_snapshot(
         campaign,
         "gemma4_31b",
         now=NOW,
-        cap_phase1=5000,
-        phase2_horizon=1000,
+        cap_phase1=1500,
+        phase2_horizon=1500,
     )
     text = _export_layout(snap)
-    assert "508/5000" in text
-    assert "400/1000" in text
+    assert "508/1500" in text
+    assert "400/1500" in text
     assert "1200.0" in text
     live_block = text.split("Live cells")[-1]
     assert "508" in live_block
@@ -1104,7 +1104,7 @@ def test_watch_progress_bars_study_kpis_and_live_fields(campaign: Path):
     assert "lattice" in s1
     assert "mixing" in s1
     s2 = text.split("Health (Study 2)")[1].split("Failures")[0]
-    assert "400/1000" in s2
+    assert "400/1500" in s2
     source = (REPO / "convention_topology" / "health.py").read_text(encoding="utf-8")
     assert "last_checkpoint_t" in source
     assert "n_retries" in source
@@ -1139,8 +1139,8 @@ def test_watch_lists_all_live_cells(campaign: Path):
         campaign,
         "gemma4_31b",
         now=NOW,
-        cap_phase1=5000,
-        phase2_horizon=1000,
+        cap_phase1=1500,
+        phase2_horizon=1500,
     )
     text = _export_layout(snap)
     assert "Live cells (40)" in text

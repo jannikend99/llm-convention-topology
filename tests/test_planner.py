@@ -29,13 +29,13 @@ class TaskGrammarTests(unittest.TestCase):
         )
 
     def test_parse_cm_k_list(self):
-        spec = parse_task("cm:mixing,lattice:0-1:k=2,4")
+        spec = parse_task("cm:mixing,lattice:0-1:k=5,10")
         self.assertEqual(spec.program, "cm")
         self.assertEqual(spec.topologies, ("mixing", "lattice"))
-        self.assertEqual(spec.k_values, (2, 4))
+        self.assertEqual(spec.k_values, (5, 10))
         cells = flatten_tasks([spec])
         keys = {(c["topology"], c["cm_k"], c["seed_index"]) for c in cells}
-        self.assertEqual(keys, {("mixing", 2, 0), ("mixing", 4, 0), ("lattice", 2, 0), ("lattice", 4, 0)})
+        self.assertEqual(keys, {("mixing", 5, 0), ("mixing", 10, 0), ("lattice", 5, 0), ("lattice", 10, 0)})
 
     def test_emergence_with_k_fails(self):
         with self.assertRaises(TaskSpecError):
@@ -64,7 +64,7 @@ class TaskGrammarTests(unittest.TestCase):
     def test_omitted_k_on_cm_does_not_expand_all(self):
         with self.assertRaises(TaskSpecError):
             parse_task("cm:mixing:0-1:k=")
-        self.assertEqual(K_SET, (2, 4, 6, 8, 10, 12))
+        self.assertEqual(K_SET, (5, 10, 14))
 
     def test_duplicate_cells_fail(self):
         a = parse_task("emergence:mixing:0-2")
@@ -88,7 +88,7 @@ class PrintQueueCliTests(unittest.TestCase):
                     "--task",
                     "emergence:mixing:0-32",
                     "--task",
-                    "cm:lattice:0-2:k=2",
+                    "cm:lattice:0-2:k=5",
                 ]
             )
         self.assertEqual(code, 0)

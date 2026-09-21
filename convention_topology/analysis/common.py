@@ -204,7 +204,20 @@ def _run_dvs(meta: dict[str, Any], meta_path: Path) -> dict[str, Any]:
                 t_start = 0
             try:
                 result["flip"] = flip(stream_tracker, meta["committed_to"], t_start, window=window)
-                result["time_to_flip"] = time_to_flip(stream_tracker, meta["committed_to"], t_start, window=window)
+                horizon = meta.get("phase2_horizon")
+                censor = int(horizon) if isinstance(horizon, int) and horizon > 0 else None
+                if censor is None:
+                    result["time_to_flip"] = time_to_flip(
+                        stream_tracker, meta["committed_to"], t_start, window=window
+                    )
+                else:
+                    result["time_to_flip"] = time_to_flip(
+                        stream_tracker,
+                        meta["committed_to"],
+                        t_start,
+                        window=window,
+                        censor_value=censor,
+                    )
             except ValueError as exc:
                 raise AnalysisMismatchError(
                     f"Study 2 terminal run {meta.get('run_id')} cannot rebuild flip: {exc}"

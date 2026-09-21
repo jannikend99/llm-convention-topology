@@ -11,12 +11,13 @@ Counted path: local OpenAI-compatible vLLM (`provider: openai_compat`) or `mock`
 | N | 48 |
 | H | 12 |
 | Topologies | mixing, random_regular, lattice, watts_strogatz, barabasi_albert |
-| Gate | first t≥144 with ≥137/144 successes, or cap 5000 |
-| k | {2,4,6,8,10,12} |
+| Gate | first t≥144 with ≥137/144 successes, or cap 1500 |
+| k | {5,10,14} |
+| Retry | 5 attempts per player decision |
 | Seeds | 32 per cell, `sampling_plan=fixed_attempted` |
-| Study 2 | prepared, `t_cm_start=0`, horizon 1000 |
+| Study 2 | prepared, `t_cm_start=0`, horizon 1500 |
 
-`jobs.models` keepers: `gemma4_31b`, `olmo31_32b`, `qwen38_27b`, `glm4_32b`. Extra entries under `models:` are a catalog (smoke `gemma4_e2b`, think variants). YAML default `run.campaign` is `experiment` with cap 5000. Scout/fit jobs must pass `--campaign` plus `PILOT_*` / `DIAG_*`. Changing `cap_phase1` changes the protocol fingerprint — use a new campaign name.
+`jobs.models` keepers: `gemma4_31b`, `olmo31_32b`, `qwen38_27b`, `glm4_32b`. Extra entries under `models:` are a catalog (smoke `gemma4_e2b`, think variants). YAML default `run.campaign` is `experiment` with cap 1500. Scout/fit jobs must pass `--campaign` plus `PILOT_*` / `DIAG_*`. A protocol change other than a later increase of `cap_phase1` or `phase2_horizon` needs a new campaign. That increase uses `--extend-bounds` and does not start a new campaign.
 
 ## Commands
 

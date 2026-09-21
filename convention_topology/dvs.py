@@ -82,7 +82,7 @@ def flip(
     != committed_to) scores 0, not a separate category.
 
     Raises `ValueError` if the tracker has fewer than `t_start + window`
-    interactions (N5): with the thesis-locked `phase2_horizon=1000` and
+    interactions (N5): with the thesis-locked `phase2_horizon=1500` and
     `window=144` this is unreachable in normal operation, but a
     misconfigured/short Phase 2 must fail loudly rather than silently
     returning 0 -- indistinguishable from a genuine non-flip.
@@ -128,11 +128,11 @@ def time_to_flip(
     t_start: int,
     window: int = DEFAULT_WINDOW,
     threshold: float = 0.95,
-    censor_value: int = 1000,
+    censor_value: int = 1500,
 ) -> int:
     """Interactions from CM injection (t_gate) to the end of the first qualifying flip window.
 
-    Censored at `censor_value` (Phase 2 horizon) if no flip occurs.
+    Censored at `censor_value` (the run's Phase 2 horizon) if no flip occurs.
 
     Raises `ValueError` if the tracker has fewer than `t_start + window`
     interactions (N5) -- see `flip`'s docstring for rationale.

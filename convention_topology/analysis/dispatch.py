@@ -16,6 +16,7 @@ from convention_topology.analysis.common import (
     prepared_valid_cm,
 )
 from convention_topology.analysis.cross_model import cross_model_summary
+from convention_topology.analysis.h3a import K_GRID
 from convention_topology.analysis.dynamics import phase_points, success_by_round
 from convention_topology.analysis.figures import (
     HUMAN_F13_CM_MIXING,
@@ -148,7 +149,7 @@ def run_h3a(runs_df, outputs_dir: Path, sensitivity_50: bool) -> dict[str, Any]:
     _write_id(
         outputs_dir,
         "F13",
-        {"id": "F13", "h3a": result, "human_cm_mixing": HUMAN_F13_CM_MIXING, "k_grid": [2, 4, 6, 8, 10, 12]},
+        {"id": "F13", "h3a": result, "human_cm_mixing": HUMAN_F13_CM_MIXING, "k_grid": list(K_GRID)},
         empirical,
     )
     plot_f13(empirical, result.get("flip_curve"), outputs_dir)

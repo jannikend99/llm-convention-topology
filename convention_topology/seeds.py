@@ -8,7 +8,7 @@ from typing import Any
 
 
 SEED_SCHEME_VERSION = 1
-ENVIRONMENT_TAGS = ("pairing", "option", "committed")
+ENVIRONMENT_TAGS = ("pairing", "option", "committed", "committed_label")
 
 
 def hash_tuple(*parts: Any) -> int:

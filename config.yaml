@@ -6,12 +6,12 @@ protocol:
   W_cm: 2
   gate_threshold: 0.95
   gate_window: 144
-  cap_phase1: 5000
-  phase2_horizon: 1000
+  cap_phase1: 1500
+  phase2_horizon: 1500
   rewards_mismatch: -50
   rewards_match: 100
   success_rule: payoff_gt_5
-  retry_max_attempts: 3
+  retry_max_attempts: 5
   temperature: 0.5
 
 network:
@@ -23,7 +23,7 @@ network:
   require_connected: true
 
 minority:
-  k_set: [2, 4, 6, 8, 10, 12]
+  k_set: [5, 10, 14]
   mode: swap
 
 pool:
@@ -83,7 +83,7 @@ models:
       - nemotron_v3
   gemma4_31b:
     model_id: google/gemma-4-31B-it
-    revision: placeholder-revision
+    revision: 842da3794eaa0b77d5f08bae87a17459d91ff475
     shorthand: gemma4_31b
     thinking: false
     thinking_always_on: false
@@ -121,7 +121,7 @@ models:
       cm: 4
   olmo31_32b:
     model_id: allenai/Olmo-3.1-32B-Instruct
-    revision: placeholder-revision
+    revision: ac0587e4a7744a551c059d8cd17ba220bc940dae
     shorthand: olmo31_32b
     thinking: false
     thinking_always_on: false
@@ -140,7 +140,7 @@ models:
       cm: 32
   glm4_32b:
     model_id: zai-org/GLM-4-32B-0414
-    revision: placeholder-revision
+    revision: 077b5c2f5c43bd3239fd605a0600229e8facbd4a
     shorthand: glm4_32b
     thinking: false
     thinking_always_on: false
@@ -159,7 +159,7 @@ models:
       cm: 32
   qwen38_27b:
     model_id: Qwen/Qwen3.8-27B
-    revision: placeholder-revision
+    revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
     shorthand: qwen38_27b
     thinking: false
     thinking_always_on: false

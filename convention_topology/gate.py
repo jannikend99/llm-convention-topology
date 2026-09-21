@@ -10,7 +10,7 @@ from typing import Mapping, Sequence
 GATE_WINDOW = 144
 GATE_THRESHOLD = 0.95
 MIN_SUCCESSES = 137  # ceil(0.95 * 144); locked counted window
-CAP_PHASE1 = 5000
+CAP_PHASE1 = 1500
 
 
 def min_gate_successes(window: int) -> int:

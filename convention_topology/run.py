@@ -131,14 +131,14 @@ class RunConfig:
     cm_k: int | None = None
     incumbent_index: int = 0
     gate_window: int = 144
-    max_phase1_interactions: int = 5000
-    phase2_horizon: int = 1000
+    max_phase1_interactions: int = 1500
+    phase2_horizon: int = 1500
     checkpoint_every: int = 1
     degree: int = 4
     ws_k: int = 4
     ws_p: float = 0.1
     ba_m: int = 2
-    retry_max_attempts: int = 3
+    retry_max_attempts: int = 5
     temperature: float = 0.5
     max_tokens: int = 512
     serve_wait_timeout: float = 600.0
@@ -224,6 +224,10 @@ def build_run_config(
     if program == PROGRAM_EMERGENCE:
         cm_k = None
     options = options_for_program(pool_labels, program)
+    env_seed = environment_seed(int(run["base_seed"]), program, topology, cm_k, seed_index)
+    incumbent_index = 0
+    if program == PROGRAM_CM:
+        incumbent_index = random.Random(substream(env_seed, "committed_label")).randrange(2)
     return RunConfig(
         program=program,
         model_shorthand=model_spec.shorthand,
@@ -235,7 +239,7 @@ def build_run_config(
         campaign=str(run["campaign"]),
         seed_index=seed_index,
         graph_seed=graph_seed(int(run["base_seed"]), topology),
-        environment_seed=environment_seed(int(run["base_seed"]), program, topology, cm_k, seed_index),
+        environment_seed=env_seed,
         model_seed=model_seed(int(run["base_seed"]), model_spec.model_id, program, topology, cm_k, seed_index),
         base_seed=int(run["base_seed"]),
         config_hash=config_hash(config),
@@ -253,7 +257,7 @@ def build_run_config(
         string_length=int(protocol["string_length"]),
         json_schema=str(protocol.get("diag_decode") or "json_schema") == "json_schema",
         cm_k=cm_k,
-        incumbent_index=0,
+        incumbent_index=incumbent_index,
         gate_window=3 * int(protocol["N"]),
         max_phase1_interactions=int(protocol["cap_phase1"]),
         phase2_horizon=int(protocol["phase2_horizon"]),
@@ -336,6 +340,7 @@ class RunState:
     prepared_state_valid: bool | None = None
     started_at: str = field(default_factory=default_now)
     run_segments: list[dict[str, Any]] = field(default_factory=list)
+    bound_extensions: list[dict[str, Any]] = field(default_factory=list)
     last_checkpoint_t: int = 0
 
 
@@ -387,6 +392,7 @@ def _sidecar(cfg: RunConfig, run_id: str, run_key: dict, state: RunState, *, sta
             "gate_window": cfg.gate_window,
             "cap_phase1": cfg.max_phase1_interactions if cfg.program == PROGRAM_EMERGENCE else None,
             "phase2_horizon": cfg.phase2_horizon if cfg.program == PROGRAM_CM else None,
+            "bound_extensions": list(state.bound_extensions),
             "retry_max_attempts": cfg.retry_max_attempts,
             "temperature": cfg.temperature,
             "max_tokens": cfg.max_tokens,
@@ -495,6 +501,14 @@ def _resume_gates(cfg: RunConfig, meta: Mapping[str, Any], state: RunState) -> N
     for key, expected in checks.items():
         if meta.get(key) != expected:
             raise RunFailedError(f"resume blocked: {key} mismatch", error_class="config")
+    if cfg.program == PROGRAM_EMERGENCE:
+        stored_cap = meta.get("cap_phase1")
+        if isinstance(stored_cap, int) and cfg.max_phase1_interactions < stored_cap:
+            raise RunFailedError("resume blocked: cap_phase1 decreased", error_class="config")
+    if cfg.program == PROGRAM_CM:
+        stored_horizon = meta.get("phase2_horizon")
+        if isinstance(stored_horizon, int) and cfg.phase2_horizon < stored_horizon:
+            raise RunFailedError("resume blocked: phase2_horizon decreased", error_class="config")
 
 
 def _in_flight_at_send(limiter: asyncio.Semaphore | None, *, limit: int) -> int | None:
@@ -660,6 +674,24 @@ def _attempt_row(
     }
 
 
+def _interaction_option_orders(
+    program: str,
+    options: Sequence[str],
+    rng: random.Random,
+) -> tuple[list[str], list[str]]:
+    """Study 1 shuffles once per partner. Study 2 shuffles once per interaction."""
+
+    def shuffled() -> list[str]:
+        order = list(options)
+        rng.shuffle(order)
+        return order
+
+    if program == PROGRAM_EMERGENCE:
+        return shuffled(), shuffled()
+    shared = shuffled()
+    return shared, list(shared)
+
+
 async def _one_interaction(
     cfg: RunConfig,
     state: RunState,
@@ -674,14 +706,14 @@ async def _one_interaction(
 ) -> None:
     t = len(state.tracker["outcome"]) + 1
     p1, p2 = _pair(state.simulation, state.rng_pairing)
-    option_order = list(cfg.options)
-    state.rng_option.shuffle(option_order)
+    option_orders = _interaction_option_orders(cfg.program, cfg.options, state.rng_option)
     answers: list[str | None] = [None, None]
     used_ids: list[str | None] = [None, None]
     llm_calls = [False, False]
     pending: list[tuple[int, Any]] = []
     for slot, (agent, partner) in enumerate(((p1, p2), (p2, p1))):
         player = state.simulation[agent]
+        option_order = option_orders[slot]
         if player.get("committed_tag"):
             answers[slot] = state.convergence["committed_to"]
             used_ids[slot] = None
@@ -738,8 +770,8 @@ async def _one_interaction(
             "success": success,
             "payoff_p1": payoff,
             "payoff_p2": payoff,
-            "option_order_p1": list(option_order),
-            "option_order_p2": list(option_order),
+            "option_order_p1": list(option_orders[0]),
+            "option_order_p2": list(option_orders[1]),
             "llm_call_p1": llm_calls[0],
             "llm_call_p2": llm_calls[1],
             "used_attempt_id_p1": used_ids[0],
@@ -816,7 +848,12 @@ def _init_state(cfg: RunConfig) -> RunState:
     )
 
 
-def _replay_interactions(state: RunState, records: list[dict[str, Any]], options: Sequence[str]) -> None:
+def _replay_interactions(
+    state: RunState,
+    records: list[dict[str, Any]],
+    options: Sequence[str],
+    program: str,
+) -> None:
     interactions = [row for row in records if row.get("record_type") == "interaction"]
     expected_t = 1
     for row in interactions:
@@ -832,10 +869,12 @@ def _replay_interactions(state: RunState, records: list[dict[str, Any]], options
         p1, p2 = _pair(state.simulation, state.rng_pairing)
         if (p1, p2) != (row["p1"], row["p2"]):
             raise RunFailedError("replay pairing RNG mismatch", error_class="config")
-        option_order = list(options)
-        state.rng_option.shuffle(option_order)
-        recorded_order = row.get("option_order_p1")
-        if recorded_order is not None and list(recorded_order) != option_order:
+        order_p1, order_p2 = _interaction_option_orders(program, options, state.rng_option)
+        recorded_p1 = row.get("option_order_p1")
+        recorded_p2 = row.get("option_order_p2")
+        if recorded_p1 is not None and list(recorded_p1) != order_p1:
+            raise RunFailedError("replay option RNG mismatch", error_class="config")
+        if recorded_p2 is not None and list(recorded_p2) != order_p2:
             raise RunFailedError("replay option RNG mismatch", error_class="config")
         a1, a2 = row["label_p1"], row["label_p2"]
         payoff = row["payoff_p1"]
@@ -919,6 +958,7 @@ async def execute_run_async(
                 prepared_state_valid=meta.get("prepared_state_valid"),
                 started_at=meta.get("started_at") or default_now(),
                 run_segments=list(meta.get("run_segments") or []),
+                bound_extensions=list(meta.get("bound_extensions") or []),
                 last_checkpoint_t=int(meta.get("last_checkpoint_t") or 0),
             )
             rng_states = pickle_payload.get("rng_states") or {}
@@ -933,7 +973,7 @@ async def execute_run_async(
             if pickle_t > event_t:
                 raise RunFailedError("pickle ahead of interaction journal", error_class="config")
             if pickle_t < event_t:
-                _replay_interactions(state, records, cfg.options)
+                _replay_interactions(state, records, cfg.options, cfg.program)
                 _checkpoint(
                     paths, cfg, run_id, run_key, state,
                     status="in_progress", stop_reason=None, error_class=None, extra={"gate_passed": meta.get("gate_passed")},
