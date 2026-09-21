@@ -71,7 +71,6 @@ submit_chain() {
       -C "GPU_MODEL:H200" --mail-type=FAIL --job-name="${jobname}" \
       "${dep[@]}" "${SLURM_FILE}" -- \
       --campaign "${campaign}" --model "${model}" --task "emergence:mixing:0-${seqs}")"
-    unset FILL_MAX_CONCURRENT_RUNS FILL_MAX_NUM_SEQS FILL_IN_FLIGHT_LIMIT TP MAX_MODEL_LEN
     prev="${jid}"
     python3 -c "import json,sys; print(json.dumps({
       'job_id': sys.argv[1], 'model': sys.argv[2], 'R': int(sys.argv[3]),
@@ -80,6 +79,7 @@ submit_chain() {
       'artifact_root': sys.argv[7], 'wall': sys.argv[8], 'gpu': 'H200', 'tp': 1,
       'max_model_len': int(sys.argv[9]),
     }))" "${jid}" "${model}" "${r}" "${seqs}" "${inflight}" "${campaign}" "${artifact}" "${WALL}" "${MAX_MODEL_LEN}" >> "${MANIFEST}"
+    unset FILL_MAX_CONCURRENT_RUNS FILL_MAX_NUM_SEQS FILL_IN_FLIGHT_LIMIT TP MAX_MODEL_LEN
     echo "submitted ${jid}"
   done
   if [[ "${DRY}" -eq 0 && -n "${prev}" ]]; then
