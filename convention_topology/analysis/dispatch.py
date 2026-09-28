@@ -106,6 +106,25 @@ def run_h2(runs_df, outputs_dir: Path) -> dict[str, Any]:
     shares = {name: _shares(name) for name in ("mixing",) + CONTRAST_TOPOLOGIES}
     entropy = {name: _entropy(name) for name in ("mixing",) + CONTRAST_TOPOLOGIES}
     result = h2_analysis(shares, entropy)
+    exclusion_counts = {}
+    for topology in ("mixing",) + CONTRAST_TOPOLOGIES:
+        attempted_rows = emergence[emergence["topology"] == topology] if not emergence.empty else emergence
+        available_rows = scored[scored["topology"] == topology] if not scored.empty else scored
+        attempted, available = int(len(attempted_rows)), int(len(available_rows))
+        contrast = result.get(f"{topology}_vs_mixing")
+        status_counts = (
+            attempted_rows["run_status"].fillna("unknown").value_counts().to_dict()
+            if "run_status" in attempted_rows.columns else {"unknown": attempted}
+        )
+        exclusion_counts[topology] = {
+            "attempted": attempted,
+            "available": available,
+            "evaluable": available if topology == "mixing" else (available if contrast and contrast["evaluable"] else 0),
+            "excluded": attempted - available,
+            "exclusion_reasons": {"dominant_share_missing": attempted - available},
+            "run_status_counts": status_counts,
+        }
+    result["exclusion_counts"] = exclusion_counts
     contrast_rows = []
     for topology in CONTRAST_TOPOLOGIES:
         row = {"topology": topology, **result[f"{topology}_vs_mixing"]}
@@ -120,10 +139,11 @@ def run_h2(runs_df, outputs_dir: Path) -> dict[str, Any]:
         + [
             {
                 "id": "F-HUM",
-                "quantity": "cm_mixing_share",
+                "quantity": "CM_population_fraction",
                 "topology": "mixing",
                 "human_value": HUMAN_F13_CM_MIXING,
                 "source": HUMAN_SOURCE["cm_mixing"],
+                "annotation": "not flip probability",
             }
         ]
     )
@@ -144,15 +164,15 @@ def run_h3a(runs_df, outputs_dir: Path, sensitivity_50: bool) -> dict[str, Any]:
     valid = prepared_valid_cm(runs_df)
     valid = valid[valid["flip"].notna()] if not valid.empty else valid
     mixing = valid[valid["topology"] == "mixing"] if not valid.empty else valid
-    result = h3a_analysis(mixing["cm_k"].tolist(), mixing["flip"].tolist()) if not mixing.empty else {"n": 0}
+    result = h3a_analysis(mixing["cm_k"].tolist(), mixing["flip"].tolist())
     empirical = empirical_flip_rates(valid)
     _write_id(
         outputs_dir,
         "F13",
-        {"id": "F13", "h3a": result, "human_cm_mixing": HUMAN_F13_CM_MIXING, "k_grid": list(K_GRID)},
+        {"id": "F13", "h3a": result, "k_grid": list(K_GRID)},
         empirical,
     )
-    plot_f13(empirical, result.get("flip_curve"), outputs_dir)
+    plot_f13(empirical, outputs_dir)
     if sensitivity_50 and not mixing.empty:
         with_50 = mixing[mixing["flip_50"].notna()]
         agreement = sensitivity_50_agreement(with_50["flip"].tolist(), with_50["flip_50"].tolist())
@@ -164,6 +184,8 @@ def run_h3b(runs_df, outputs_dir: Path) -> dict[str, Any]:
     valid = prepared_valid_cm(runs_df)
     valid = valid[valid["flip"].notna()] if not valid.empty else valid
     result = h3b_analysis(valid) if not valid.empty else {"n": 0, "label": "exploratory"}
+    mixing = valid[valid["topology"] == "mixing"] if not valid.empty else valid
+    h3a_result = h3a_analysis(mixing["cm_k"].tolist(), mixing["flip"].tolist())
     heat = empirical_flip_rates(valid)
     _write_id(outputs_dir, "F14", {"id": "F14", "h3b": result}, heat)
     plot_f14(heat, outputs_dir)
@@ -173,8 +195,6 @@ def run_h3b(runs_df, outputs_dir: Path) -> dict[str, Any]:
             rates = group.groupby("cm_k")["flip"].mean().sort_index()
             n_cell = group.groupby("cm_k").size().to_dict()
             mass = next((k for k, rate in rates.items() if rate >= 0.5), None)
-            gam = h3a_analysis(group["cm_k"].tolist(), group["flip"].tolist())
-            interaction_p = result.get("lr_p_interaction_vs_main") if result.get("label") == "confirmatory" else None
             rows.append(
                 {
                     "topology": topology,
@@ -182,17 +202,31 @@ def run_h3b(runs_df, outputs_dir: Path) -> dict[str, Any]:
                     "n": int(len(group)),
                     "cell_n": n_cell,
                     "flip_rates": rates.to_dict(),
-                    "smallest_k_flip_ge_0.5": mass,
-                    "critical_mass": mass,
-                    "lr_stat_gam_vs_linear": gam.get("lr_stat_gam_vs_linear"),
-                    "lr_p_gam_vs_linear": gam.get("lr_p_gam_vs_linear"),
-                    "lr_p_interaction_vs_main": interaction_p,
+                    "smallest_tested_k_flip_ge_0_5": mass,
+                    "grid_summary_status": "descriptive_tested_grid",
+                    "lr_p_interaction_vs_main": result.get("lr_p_interaction_vs_main"),
                     "h3b_label": result.get("label"),
+                    "h3a_status": h3a_result.get("label") if topology == "mixing" else None,
+                    "h3a_omnibus_lr_df": h3a_result.get("omnibus_lr_df") if topology == "mixing" else None,
+                    "h3a_omnibus_lr_stat": h3a_result.get("omnibus_lr_stat") if topology == "mixing" else None,
+                    "h3a_omnibus_lr_p": h3a_result.get("omnibus_lr_p") if topology == "mixing" else None,
                 }
             )
     th3 = pd.DataFrame(rows)
     cm_table = critical_mass(valid) if not valid.empty else pd.DataFrame()
-    _write_id(outputs_dir, "T-H3", {"id": "T-H3", "h3b": result, "critical_mass": cm_table.to_dict("records")}, th3)
+    tested_grid_summary = cm_table.rename(columns={"critical_mass": "smallest_tested_k_flip_ge_0_5"})
+    _write_id(
+        outputs_dir,
+        "T-H3",
+        {
+            "id": "T-H3",
+            "h3a": h3a_result,
+            "h3b": result,
+            "tested_grid_summary": tested_grid_summary.to_dict("records"),
+            "grid_summary_status": "descriptive_tested_grid",
+        },
+        th3,
+    )
     return result
 
 

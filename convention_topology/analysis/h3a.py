@@ -1,16 +1,8 @@
-"""H3a: flip curve over committed-minority size cm_k (WORKING.md §8, locked M04).
-
-Primary inferential contrast: logistic GAM `flip ~ s(cm_k)` vs. linear
-logistic `flip ~ cm_k`, compared via a likelihood-ratio test
-(`03_Methods.tex:228-229`; `WORKING.md:385`). The GAM is also the source of
-the flip-curve figure data. Linear-vs-intercept is retained only as a
-secondary/descriptive contrast -- it is never the primary H3a claim.
-`--sensitivity-50` exports 95%-vs-50%-flip-indicator agreement (Appendix
-`tab:appendix-flip-agreement`).
-"""
+"""H3a: mixing-only flip differences at the tested committed-minority sizes."""
 
 from __future__ import annotations
 
+import warnings
 from typing import Any, Sequence
 
 import numpy as np
@@ -18,122 +10,89 @@ import pandas as pd
 import statsmodels.api as sm
 from numpy.linalg import LinAlgError
 from scipy.stats import chi2
-from statsmodels.tools.sm_exceptions import PerfectSeparationError
+from statsmodels.tools.sm_exceptions import ConvergenceWarning, PerfectSeparationError, PerfectSeparationWarning
 
 MIN_N_FOR_INFERENCE = 8
 K_GRID = [5, 10, 14]
+_FIT_EXCEPTIONS = (LinAlgError, PerfectSeparationError, PerfectSeparationWarning, ConvergenceWarning, ValueError)
 
-_FIT_EXCEPTIONS = (LinAlgError, PerfectSeparationError, ValueError)
+
+def _metadata() -> dict[str, Any]:
+    return {"analysis_status": "amended-primary", "confirmatory_status": "not-established", "amendment_date": "2026-09-28", "prior_result_inspection": True, "preregistration_status": "unknown"}
+
+
+def _empirical(x: np.ndarray, y: np.ndarray) -> list[dict[str, float | int | None]]:
+    rows = []
+    for k in K_GRID:
+        values = y[x == k]
+        rows.append({"cm_k": k, "n": int(len(values)), "flip_rate": float(values.mean()) if len(values) else None})
+    return rows
+
+
+def _fit_logit(y: np.ndarray, design: np.ndarray):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ConvergenceWarning)
+        warnings.simplefilter("error", PerfectSeparationWarning)
+        fit = sm.Logit(y, design).fit(disp=0, method="newton", maxiter=200)
+    if not bool(fit.mle_retvals.get("converged", False)):
+        raise ValueError("logit did not converge")
+    return fit
 
 
 def h3a_analysis(cm_k: Sequence[int], flip: Sequence[int]) -> dict[str, Any]:
-    x = np.asarray(list(cm_k), dtype=float)
-    y = np.asarray(list(flip), dtype=int)
-    n = len(y)
-
-    if n < MIN_N_FOR_INFERENCE or len(set(y.tolist())) < 2:
-        return {"n": n, "label": "exploratory", "reason": "insufficient n or no variance in flip outcome"}
-
-    # `has_constant="add"` forces the intercept column even if `x` itself
-    # happens to be constant (degenerate cm_k input) -- default `"skip"`
-    # would silently drop to a 1-column design and desync `full_fit.params`
-    # indexing below.
-    design = sm.add_constant(x.reshape(-1, 1), has_constant="add")
-    linear_coef: float | None
-    linear_p: float | None
-    linear_ll: float | None = None
-    lr_stat_linear_vs_intercept: float | None
-    lr_p_linear_vs_intercept: float | None
+    raw_x, raw_y = list(cm_k), list(flip)
+    if len(raw_x) != len(raw_y):
+        return {**_metadata(), "n": 0, "label": "unevaluable", "reason": "cm_k and flip lengths differ"}
     try:
-        full_fit = sm.Logit(y, design).fit(disp=0)
-        null_fit = sm.Logit(y, np.ones((n, 1))).fit(disp=0)
-        linear_ll = float(full_fit.llf)
-        lr_stat_linear_vs_intercept = float(2 * (full_fit.llf - null_fit.llf))
-        lr_p_linear_vs_intercept = float(chi2.sf(lr_stat_linear_vs_intercept, df=1))
-        linear_coef = float(full_fit.params[1])
-        linear_p = float(full_fit.pvalues[1])
+        x, y_numeric = np.asarray(raw_x, dtype=float), np.asarray(raw_y, dtype=float)
+    except (TypeError, ValueError):
+        return {**_metadata(), "n": 0, "label": "unevaluable", "reason": "cm_k and flip must be numeric"}
+    if (not np.isfinite(x).all() or not np.isfinite(y_numeric).all() or not np.isin(x, K_GRID).all()
+            or not np.isin(y_numeric, [0.0, 1.0]).all()):
+        return {**_metadata(), "n": 0, "label": "unevaluable", "reason": "cm_k must be in the tested grid and flip must be binary"}
+    y = y_numeric.astype(int)
+    counts = {k: int((x == k).sum()) for k in K_GRID}
+    result: dict[str, Any] = {**_metadata(), "n": int(len(y)), "k_grid": list(K_GRID), "cell_n": counts,
+                              "empirical_probabilities": _empirical(x, y), "omnibus_lr_df": 2,
+                              "omnibus_lr_stat": None, "omnibus_lr_p": None,
+                              "linear_logit_coef": None, "linear_logit_p": None,
+                              "linear_lr_stat_vs_intercept": None, "linear_lr_p_vs_intercept": None}
+    if any(count < MIN_N_FOR_INFERENCE for count in counts.values()):
+        result.update(label="unevaluable", reason="each expected k cell requires at least 8 eligible runs")
+        return result
+    if len(set(y.tolist())) < 2:
+        result.update(label="unevaluable", reason="flip outcome has no variance")
+        return result
+    categorical = pd.get_dummies(pd.Categorical(x, categories=K_GRID), drop_first=True).astype(float).to_numpy()
+    full_design = sm.add_constant(categorical, has_constant="add")
+    null_design = np.ones((len(y), 1))
+    try:
+        full_fit, null_fit = _fit_logit(y, full_design), _fit_logit(y, null_design)
+        stat = float(2 * (full_fit.llf - null_fit.llf))
+        if not np.isfinite(stat) or stat < 0:
+            raise ValueError("invalid categorical likelihood-ratio statistic")
+        result.update(label="evaluable", omnibus_lr_stat=stat, omnibus_lr_p=float(chi2.sf(stat, df=2)))
     except _FIT_EXCEPTIONS as exc:
-        linear_coef = linear_p = lr_stat_linear_vs_intercept = lr_p_linear_vs_intercept = None
-        return {
-            "n": n,
-            "label": "exploratory",
-            "reason": f"linear logit fit failed: {exc}",
-            "linear_logit_coef": None,
-            "linear_logit_p": None,
-            "lr_stat_linear_vs_intercept": None,
-            "lr_p_linear_vs_intercept": None,
-            "lr_stat_gam_vs_linear": None,
-            "lr_p_gam_vs_linear": None,
-            "gam": {},
-            "flip_curve": None,
-        }
-
-    gam_summary: dict[str, Any] = {}
-    lr_stat_gam_vs_linear: float | None = None
-    lr_p_gam_vs_linear: float | None = None
-    lr_df_gam_vs_linear: float | None = None
-    flip_curve: list[dict[str, float]] | None = None
-    label = "exploratory"
-    reason: str | None = None
+        result.update(label="unevaluable", reason=f"categorical logit fit failed: {exc}")
+        return result
     try:
-        from pygam import LogisticGAM, s
-
-        n_splines = max(3, min(6, n - 2))
-        X = x.reshape(-1, 1)
-        gam = LogisticGAM(s(0, n_splines=n_splines)).fit(X, y)
-        gam_ll = float(gam.loglikelihood(X, y))
-        edof = float(gam.statistics_["edof"])
-        lr_df_gam_vs_linear = edof - 2.0  # GAM smooth term's effective df vs. linear's 1 slope + 1 intercept
-        if lr_df_gam_vs_linear > 0 and linear_ll is not None:
-            lr_stat_gam_vs_linear = float(2 * (gam_ll - linear_ll))
-            lr_stat_gam_vs_linear = max(lr_stat_gam_vs_linear, 0.0)
-            lr_p_gam_vs_linear = float(chi2.sf(lr_stat_gam_vs_linear, df=lr_df_gam_vs_linear))
-            label = "confirmatory"
-        else:
-            reason = "GAM effective df did not exceed the linear model's df; LR test undefined"
-
-        grid = np.asarray(K_GRID, dtype=float).reshape(-1, 1)
-        predicted = gam.predict_proba(grid)
-        flip_curve = [{"cm_k": k, "predicted_flip_prob": float(p)} for k, p in zip(K_GRID, predicted)]
-        gam_summary = {"n_splines": n_splines, "edof": edof}
-    except _FIT_EXCEPTIONS as exc:  # tiny-n GAM fit failures are expected, not fatal
-        gam_summary = {"error": str(exc)}
-        label = "exploratory"
-        reason = f"GAM fit failed: {exc}"
-
-    result = {
-        "n": n,
-        "label": label,
-        "linear_logit_coef": linear_coef,
-        "linear_logit_p": linear_p,
-        "lr_stat_linear_vs_intercept": lr_stat_linear_vs_intercept,
-        "lr_p_linear_vs_intercept": lr_p_linear_vs_intercept,
-        "lr_stat_gam_vs_linear": lr_stat_gam_vs_linear,
-        "lr_p_gam_vs_linear": lr_p_gam_vs_linear,
-        "lr_df_gam_vs_linear": lr_df_gam_vs_linear,
-        "gam": gam_summary,
-        "flip_curve": flip_curve,
-    }
-    if reason is not None:
-        result["reason"] = reason
+        linear_fit = _fit_logit(y, sm.add_constant(x, has_constant="add"))
+        stat = float(2 * (linear_fit.llf - null_fit.llf))
+        if not np.isfinite(stat) or stat < 0:
+            raise ValueError("invalid secondary linear likelihood-ratio statistic")
+        result.update(linear_logit_coef=float(linear_fit.params[1]), linear_logit_p=float(linear_fit.pvalues[1]), linear_lr_stat_vs_intercept=stat, linear_lr_p_vs_intercept=float(chi2.sf(stat, df=1)))
+    except _FIT_EXCEPTIONS as exc:
+        result["linear_reason"] = f"secondary linear logit fit failed: {exc}"
     return result
 
 
 def sensitivity_50_agreement(flip_95: Sequence[int], flip_50: Sequence[int]) -> dict[str, Any]:
-    """95% vs 50% flip-indicator agreement (mixing, eligible runs)."""
-    a = np.asarray(list(flip_95), dtype=int)
-    b = np.asarray(list(flip_50), dtype=int)
-    n = len(a)
-    if n == 0:
-        return {"n": 0, "agreement_rate": None}
-    return {"n": n, "agreement_rate": float((a == b).mean())}
+    a, b = np.asarray(list(flip_95), dtype=int), np.asarray(list(flip_50), dtype=int)
+    return {"n": len(a), "agreement_rate": None if len(a) == 0 else float((a == b).mean())}
 
 
 def empirical_flip_rates(runs_df: pd.DataFrame) -> pd.DataFrame:
     columns = ["topology", "cm_k", "flip_rate", "n"]
     if runs_df.empty:
         return pd.DataFrame(columns=columns)
-    grouped = runs_df.groupby(["topology", "cm_k"], as_index=False).agg(
-        flip_rate=("flip", "mean"), n=("flip", "size")
-    )
-    return grouped[columns]
+    return runs_df.groupby(["topology", "cm_k"], as_index=False).agg(flip_rate=("flip", "mean"), n=("flip", "size"))[columns]

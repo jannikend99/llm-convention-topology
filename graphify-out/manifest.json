@@ -30,9 +30,9 @@
     "semantic_hash": "8d8da4348bde587eeb483ae0f05aa3e1"
   },
   "convention_topology/analysis/dispatch.py": {
-    "mtime": 1790029742.712429,
-    "seen": 1790628880.565887,
-    "ast_hash": "fdd1585bf0c05b05e5847e076b6e198c",
+    "mtime": 1790635138.6799772,
+    "seen": 1790635154.5739892,
+    "ast_hash": "b5130440dc505c574b41d08fdd653e7c",
     "semantic_hash": ""
   },
   "convention_topology/analysis/h1.py": {
@@ -42,21 +42,21 @@
     "semantic_hash": "37149393945e81e40c3bb2b7edfee268"
   },
   "convention_topology/analysis/h2.py": {
-    "mtime": 1789091393.758687,
-    "seen": 1789439609.5825942,
-    "ast_hash": "c712d025dc4d38eea95136cdc94bafa7",
-    "semantic_hash": "c712d025dc4d38eea95136cdc94bafa7"
+    "mtime": 1790635277.4977071,
+    "seen": 1790635524.08461,
+    "ast_hash": "4b1ee023c66723f102eb0ec184340d8b",
+    "semantic_hash": ""
   },
   "convention_topology/analysis/h3a.py": {
-    "mtime": 1790029722.5176468,
-    "seen": 1790628880.56589,
-    "ast_hash": "cb1e5f18495fb123b576a2a1d96bab7a",
+    "mtime": 1790634860.6883495,
+    "seen": 1790635154.573993,
+    "ast_hash": "e826a6f0858418c40700cca7c230cd17",
     "semantic_hash": ""
   },
   "convention_topology/analysis/h3b.py": {
-    "mtime": 1790029724.155398,
-    "seen": 1790628880.565891,
-    "ast_hash": "96eb5066df2230d318bf2bace39bd863",
+    "mtime": 1790634981.0377474,
+    "seen": 1790635154.573994,
+    "ast_hash": "c60dca9728b5e665f2efe402ec67ab33",
     "semantic_hash": ""
   },
   "convention_topology/analysis/h4.py": {
@@ -282,10 +282,10 @@
     "semantic_hash": "81c2b672b55c03e494befc4029fadf18"
   },
   "convention_topology/analysis/figures.py": {
-    "mtime": 1789091440.658451,
-    "seen": 1789439609.582592,
-    "ast_hash": "c4977a206d17de354dbd7b29bece9987",
-    "semantic_hash": "c4977a206d17de354dbd7b29bece9987"
+    "mtime": 1790635035.9681532,
+    "seen": 1790635154.5739908,
+    "ast_hash": "f951fb6f2255a0384a1b557de96ee2c6",
+    "semantic_hash": ""
   },
   "convention_topology/analysis/stream.py": {
     "mtime": 1789091074.969685,
@@ -294,9 +294,9 @@
     "semantic_hash": "a370e9c0188997c37d8fcf002d92110e"
   },
   "tests/test_analysis.py": {
-    "mtime": 1790029775.4651453,
-    "seen": 1790628880.5659149,
-    "ast_hash": "837f33b6dbe7e1b006d2526bc34731a4",
+    "mtime": 1790635258.7439485,
+    "seen": 1790635524.084636,
+    "ast_hash": "c4b0e1908d938340f1bc1a050590914b",
     "semantic_hash": ""
   },
   "convention_topology/tech_check.py": {

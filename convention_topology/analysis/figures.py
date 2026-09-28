@@ -93,21 +93,14 @@ def plot_f4(emergence: pd.DataFrame, outputs_dir: Path) -> None:
     save_png_pdf(fig, outputs_dir, "F4")
 
 
-def plot_f13(empirical: pd.DataFrame, curve: list[dict] | None, outputs_dir: Path) -> None:
+def plot_f13(empirical: pd.DataFrame, outputs_dir: Path) -> None:
     fig, ax = plt.subplots(figsize=(6, 4))
     if empirical.empty:
         ax.set_title("F13 empty")
     else:
         for topology, group in empirical.groupby("topology"):
-            ax.plot(group["cm_k"], group["flip_rate"], marker="o", label=str(topology))
-        if curve:
-            ax.plot(
-                [row["cm_k"] for row in curve],
-                [row["predicted_flip_prob"] for row in curve],
-                linestyle="--",
-                label="GAM mixing",
-            )
-        ax.axhline(HUMAN_F13_CM_MIXING, color="gray", linestyle=":", label="human CM mixing ~0.25")
+            label = "mixing (H3a)" if topology == "mixing" else f"{topology} (exploratory)"
+            ax.plot(group["cm_k"], group["flip_rate"], marker="o", label=label)
         ax.legend(fontsize=7)
     ax.set_xlabel("k")
     ax.set_ylabel("flip rate")

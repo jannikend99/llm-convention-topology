@@ -4,6 +4,7 @@ import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -14,9 +15,10 @@ from convention_topology.analysis.common import (
     prepared_memory_policy_shares,
     prepared_valid_cm,
 )
-from convention_topology.analysis.dispatch import run_h1, run_h2, run_h3a, run_h4
+from convention_topology.analysis.dispatch import run_h1, run_h2, run_h3a, run_h3b, run_h4
 from convention_topology.analysis.h2 import ALPHA, CONTRAST_TOPOLOGIES, h2_analysis
-from convention_topology.analysis.h3a import K_GRID
+from convention_topology.analysis.h3a import K_GRID, h3a_analysis
+from convention_topology.analysis.h3b import h3b_analysis
 from convention_topology.analysis.stream import AnalysisMismatchError
 from convention_topology.dvs import DEFAULT_WINDOW
 from convention_topology.persistence import empty_sidecar, save_run_pickle, write_meta
@@ -259,7 +261,7 @@ class StreamLoadTests(unittest.TestCase):
 
 
 class H2SpineTests(unittest.TestCase):
-    def test_four_contrasts_bonferroni_support(self):
+    def test_primary_h2_is_independent_of_exploratory_topologies(self):
         mixing = [0.95, 0.96, 0.97, 0.94]
         low = [0.2, 0.21, 0.19, 0.22]
         result = h2_analysis(
@@ -273,9 +275,11 @@ class H2SpineTests(unittest.TestCase):
         )
         for topology in CONTRAST_TOPOLOGIES:
             self.assertIn(f"{topology}_vs_mixing", result)
-            self.assertEqual(result[f"{topology}_vs_mixing"]["alpha"], 0.0125)
-        self.assertEqual(ALPHA, 0.0125)
-        self.assertIn(result["support"], {"full", "partial", "not-supported"})
+        self.assertEqual(ALPHA, 0.025)
+        self.assertEqual(result["n_contrasts"], 2)
+        self.assertEqual(result["watts_strogatz_vs_mixing"]["alpha"], None)
+        self.assertEqual(result["analysis_status"], "amended-primary")
+        self.assertEqual(result["confirmatory_status"], "not-established")
         self.assertEqual(result["support"], "full")
 
         none = h2_analysis(
@@ -287,7 +291,7 @@ class H2SpineTests(unittest.TestCase):
                 "barabasi_albert": mixing,
             }
         )
-        self.assertEqual(none["support"], "not-supported")
+        self.assertEqual(none["support"], "none")
 
         partial = h2_analysis(
             {
@@ -299,6 +303,23 @@ class H2SpineTests(unittest.TestCase):
             }
         )
         self.assertEqual(partial["support"], "partial")
+
+        exploratory_only = h2_analysis({"mixing": mixing, "lattice": mixing, "random_regular": mixing,
+                                        "watts_strogatz": low, "barabasi_albert": low})
+        self.assertEqual(exploratory_only["support"], "none")
+
+    def test_h2_missing_primary_data_is_unevaluable(self):
+        result = h2_analysis({"mixing": [0.9, 0.95], "lattice": [0.2, 0.3]})
+        self.assertEqual(result["support"], "unevaluable")
+        self.assertEqual(result["random_regular_vs_mixing"]["decision"], "unevaluable")
+
+    def test_h2_invalid_or_zero_total_variance_primary_data_is_unevaluable(self):
+        invalid = h2_analysis({"mixing": [0.9, 1.1], "lattice": [0.2, 0.3], "random_regular": [0.2, 0.3]})
+        self.assertEqual(invalid["support"], "unevaluable")
+        constant = h2_analysis({"mixing": [0.9, 0.9], "lattice": [0.2, 0.3], "random_regular": [0.2, 0.3]})
+        self.assertEqual(constant["support"], "full")
+        both_constant = h2_analysis({"mixing": [0.9, 0.9], "lattice": [0.2, 0.2], "random_regular": [0.2, 0.2]})
+        self.assertEqual(both_constant["support"], "unevaluable")
 
     def test_run_h1_h2_write_named_ids(self):
         table = pd.DataFrame(
@@ -336,12 +357,96 @@ class H2SpineTests(unittest.TestCase):
                 self.assertTrue((out / f"{stem}.json").exists(), stem)
                 self.assertTrue((out / f"{stem}.csv").exists(), stem)
             payload = json.loads((out / "T-H2.json").read_text())
-            self.assertEqual(payload["alpha"], 0.0125)
+            self.assertEqual(payload["alpha"], 0.025)
             self.assertIn("watts_strogatz_vs_mixing", payload)
             self.assertIn("barabasi_albert_vs_mixing", payload)
+            self.assertEqual(payload["exclusion_counts"]["mixing"]["attempted"], 2)
+            self.assertEqual(payload["exclusion_counts"]["mixing"]["available"], 2)
+            self.assertEqual(payload["exclusion_counts"]["mixing"]["run_status_counts"], {"unknown": 2})
 
 
 class H3H4Tests(unittest.TestCase):
+    def test_h3a_uses_all_eligible_no_flip_runs_and_categorical_omnibus(self):
+        cm_k = [5] * 8 + [10] * 8 + [14] * 8
+        flip = [0, 0, 0, 0, 1, 1, 1, 1] * 3
+        result = h3a_analysis(cm_k, flip)
+        self.assertEqual(result["label"], "evaluable")
+        self.assertEqual(result["n"], 24)
+        self.assertEqual(result["cell_n"], {5: 8, 10: 8, 14: 8})
+        self.assertEqual(result["omnibus_lr_df"], 2)
+        self.assertNotIn("gam", result)
+        self.assertNotIn("flip_curve", result)
+
+    def test_h3a_missing_or_constant_cells_are_unevaluable(self):
+        missing = h3a_analysis([5] * 8 + [10] * 8, [0, 1] * 8)
+        self.assertEqual(missing["label"], "unevaluable")
+        constant = h3a_analysis([5] * 8 + [10] * 8 + [14] * 8, [1] * 24)
+        self.assertEqual(constant["label"], "unevaluable")
+        separated = h3a_analysis([5] * 8 + [10] * 8 + [14] * 8, [0] * 8 + [1] * 8 + [1] * 8)
+        self.assertEqual(separated["label"], "unevaluable")
+
+    def test_h3a_nonconverged_fit_is_unevaluable(self):
+        cm_k = [5] * 8 + [10] * 8 + [14] * 8
+        with patch("convention_topology.analysis.h3a._fit_logit", side_effect=ValueError("logit did not converge")):
+            result = h3a_analysis(cm_k, [0, 1] * 12)
+        self.assertEqual(result["label"], "unevaluable")
+        self.assertIn("did not converge", result["reason"])
+
+    def test_h3a_rejects_malformed_input(self):
+        self.assertEqual(h3a_analysis([5], [0, 1])["label"], "unevaluable")
+        self.assertEqual(h3a_analysis([5], [0.5])["label"], "unevaluable")
+        self.assertEqual(h3a_analysis([6], [0])["label"], "unevaluable")
+
+    def test_h3b_remains_exploratory_when_cells_meet_floor(self):
+        rows = []
+        for topology in ("mixing", "lattice"):
+            for k in (5, 10, 14):
+                rows.extend({"topology": topology, "cm_k": k, "flip": i % 2} for i in range(8))
+        result = h3b_analysis(pd.DataFrame(rows))
+        self.assertEqual(result["label"], "exploratory")
+        self.assertTrue(result["cell_floor_met"])
+
+    def test_h3b_rechecks_outcome_variation_after_subsetting(self):
+        rows = []
+        for topology in ("mixing", "lattice"):
+            for k in (5, 10, 14):
+                rows.extend({"topology": topology, "cm_k": k, "flip": 0} for _ in range(8))
+        rows.append({"topology": "watts_strogatz", "cm_k": 5, "flip": 1})
+        result = h3b_analysis(pd.DataFrame(rows))
+        self.assertFalse(result["fit_evaluable"])
+        self.assertIn("qualified topology subset", result["reason"])
+
+    def test_h3b_nonconverged_fit_is_unevaluable(self):
+        rows = []
+        for topology in ("mixing", "lattice"):
+            for k in (5, 10, 14):
+                rows.extend({"topology": topology, "cm_k": k, "flip": i % 2} for i in range(8))
+        with patch("convention_topology.analysis.h3b.sm.Logit.fit", side_effect=ValueError("logit did not converge")):
+            result = h3b_analysis(pd.DataFrame(rows))
+        self.assertFalse(result["fit_evaluable"])
+        self.assertIn("did not converge", result["reason"])
+
+    def test_h3b_separated_data_is_unevaluable(self):
+        rows = []
+        for topology in ("mixing", "lattice"):
+            for k, flip in ((5, 0), (10, 1), (14, 1)):
+                rows.extend({"topology": topology, "cm_k": k, "flip": flip} for _ in range(8))
+        result = h3b_analysis(pd.DataFrame(rows))
+        self.assertFalse(result["fit_evaluable"])
+
+    def test_t_h3_uses_descriptive_tested_grid_terms(self):
+        df = pd.DataFrame(
+            [{"program": "cm", "prepared_state_valid": True, "topology": "mixing", "model_shorthand": "mock", "cm_k": k, "flip": i % 2}
+             for k in (5, 10, 14) for i in range(8)]
+        )
+        with TemporaryDirectory() as tmp:
+            run_h3b(df, Path(tmp))
+            payload = json.loads((Path(tmp) / "T-H3.json").read_text())
+            self.assertIn("tested_grid_summary", payload)
+            self.assertNotIn("critical_mass", payload)
+            table = pd.read_csv(Path(tmp) / "T-H3.csv")
+            self.assertIn("smallest_tested_k_flip_ge_0_5", table.columns)
+            self.assertIn("grid_summary_status", table.columns)
     def test_h3_drops_invalid_prepared_state(self):
         df = pd.DataFrame(
             [
