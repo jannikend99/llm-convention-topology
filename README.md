@@ -41,3 +41,31 @@ sbatch --export=ALL jobs/thesis_vllm.slurm -- \
 Operator packet: thesis `specs/yen-configuration.md` and `specs/counted-job-queue.md`. This package does not submit jobs. Ashery ladder notes: `archive/ops/diag-ashery-ladder.md`. Pack downloads: `bash jobs/pack_yen_runs.sh`.
 
 Campaign artifacts: laptop default `data/runs/<campaign>/` (gitignored). Do not use a leftover repo-root `runs/` tree. On Yen pass `--artifact-root /scratch/shared/$USER/runs/<campaign>/` (do not append the campaign name twice).
+
+
+## Main campaign data backup
+
+The Yen `experiment` campaign snapshot packed on 2026-10-02 is backed up as an
+asset of the draft release `main-run-20261002` in this private GitHub repository.
+Raw artifacts remain gitignored; cloning the repository does not download them.
+The campaign's `config.snapshot.yaml` records the run configuration.
+
+- Archive: `runs_experiment_20261002T174203Z.tar.gz`
+- Archive size: 1,091,965,912 bytes
+- SHA-256: `99ea2cad05f999856ab562099905882be205b982840dab455600bec7151262ba`
+- Contents: 7,712 files, 10,590,595,889 uncompressed bytes
+- Local campaign directory: `data/runs/experiment/`
+
+Restore from the repository root with GitHub CLI access to the private release.
+Keep at least 12 GB free and check that `data/runs/experiment/` does not already
+exist before extracting:
+
+```bash
+mkdir -p data/runs
+gh release download main-run-20261002 \
+  --repo jannikend99/llm-convention-topology \
+  --pattern runs_experiment_20261002T174203Z.tar.gz --dir data/runs
+shasum -a 256 data/runs/runs_experiment_20261002T174203Z.tar.gz
+# Compare the result with the SHA-256 above before extracting.
+tar -xzf data/runs/runs_experiment_20261002T174203Z.tar.gz -C data/runs
+```
