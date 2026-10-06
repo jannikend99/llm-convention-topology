@@ -1,13 +1,15 @@
 """Reopen runs that stopped on a cap or horizon so the same run_id can continue.
 
 Dry-run unless apply is set. A lower cap or horizon refuses the whole call.
-Failed runs stay failed. Gated Study 1 runs stay finished.
+Failed runs stay failed. Gated Study 1 runs stay finished unless explicitly
+selected for post-gate observation to their existing cap.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import fcntl
 
 from convention_topology.persistence import PersistenceError, read_meta, write_meta
 
@@ -66,6 +68,7 @@ def extend_bounds(
     cap_phase1: int,
     phase2_horizon: int,
     apply: bool = False,
+    continue_gated: bool = False,
 ) -> list[dict[str, Any]]:
     """List runs a higher bound would continue. Write sidecars only when apply is set."""
     root = Path(campaign_dir)
@@ -89,7 +92,27 @@ def extend_bounds(
 
     changed: list[dict[str, Any]] = []
     for path, meta in metas:
-        extension = _extension(meta, cap_phase1=cap_phase1, phase2_horizon=phase2_horizon)
+        if continue_gated:
+            if not (
+                meta.get("program") == PROGRAM_EMERGENCE
+                and meta.get("run_status") == "completed"
+                and meta.get("stop_reason") == "gate"
+                and meta.get("gate_passed") is True
+                and isinstance(meta.get("t_gate"), int)
+                and int(meta.get("n_interactions") or 0) < cap_phase1
+            ):
+                continue
+            if meta.get("cap_phase1") != cap_phase1:
+                raise ExtendBoundsError("post-gate observation requires the unchanged stored cap_phase1")
+            extension = {
+                "field": "post_gate_observation",
+                "previous": meta["n_interactions"],
+                "new": cap_phase1,
+                "t": meta["n_interactions"],
+                "original_meta": dict(meta),
+            }
+        else:
+            extension = _extension(meta, cap_phase1=cap_phase1, phase2_horizon=phase2_horizon)
         if extension is None:
             continue
         pickle_path = path.with_name(path.name[: -len(".meta.json")] + ".pkl")
@@ -111,16 +134,24 @@ def extend_bounds(
             changed.append(row)
             continue
         if apply:
-            history = list(meta.get("bound_extensions") or [])
-            history.append(extension)
-            meta["bound_extensions"] = history
-            meta["run_status"] = "in_progress"
-            meta["stop_reason"] = None
-            meta["finished_at"] = None
-            if extension["field"] == "cap_phase1":
-                meta["cap_phase1"] = cap_phase1
-            else:
-                meta["phase2_horizon"] = phase2_horizon
-            write_meta(path, meta)
+            lock_path = path.with_name(path.name[:-len(".meta.json")] + ".lock")
+            with lock_path.open("a") as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError as exc:
+                    raise ExtendBoundsError(f"run is locked: {path}") from exc
+                if read_meta(path) != meta:
+                    raise ExtendBoundsError(f"sidecar changed during selection: {path}")
+                history = list(meta.get("bound_extensions") or [])
+                history.append(extension)
+                meta["bound_extensions"] = history
+                meta["run_status"] = "in_progress"
+                meta["stop_reason"] = None
+                meta["finished_at"] = None
+                if extension["field"] == "cap_phase1":
+                    meta["cap_phase1"] = cap_phase1
+                elif extension["field"] == "phase2_horizon":
+                    meta["phase2_horizon"] = phase2_horizon
+                write_meta(path, meta)
         changed.append(row)
     return changed

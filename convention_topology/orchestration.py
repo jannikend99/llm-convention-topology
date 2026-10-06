@@ -328,6 +328,7 @@ async def run_slice_async(
     mock_policy: str = "imitate_modal",
     require_clean: bool = False,
     task_argv: Sequence[str] | None = None,
+    post_gate_only: bool = False,
 ) -> list[str]:
     if require_clean:
         require_clean_worktree(REPO_ROOT)
@@ -402,6 +403,13 @@ async def run_slice_async(
         )
         run_id = build_run_id(run_key)
         paths = run_paths(campaign_dir, cfg.model_shorthand, cfg.topology, run_id)
+        if post_gate_only:
+            if program != "emergence" or not paths.meta_path.exists():
+                return "skipped"
+            selected_meta = read_meta(paths.meta_path)
+            if not any(item.get("field") == "post_gate_observation"
+                       for item in (selected_meta.get("bound_extensions") or [])):
+                return "skipped"
         if paths.meta_path.exists():
             meta = read_meta(paths.meta_path)
             if meta.get("run_status") in {"completed", "censored", "failed"}:

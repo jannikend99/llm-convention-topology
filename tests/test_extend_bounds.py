@@ -67,3 +67,40 @@ def test_lower_bound_refuses_apply(tmp_path: Path):
     with pytest.raises(ExtendBoundsError):
         extend_bounds(tmp_path, "gemma4_31b", cap_phase1=1500, phase2_horizon=1000, apply=True)
     assert read_meta(path)["run_status"] == "completed"
+
+
+def test_continue_gated_is_dry_run_then_idempotent_and_selective(tmp_path: Path):
+    path = _meta(tmp_path, program="emergence", status="completed", stop_reason="gate",
+                 n_interactions=200, cap=1500)
+    original = read_meta(path)
+    original.update(gate_passed=True, t_gate=200, t_phase1_end=200)
+    write_meta(path, original)
+    capped = _meta(tmp_path, program="emergence", status="censored", stop_reason="cap",
+                   n_interactions=1500, cap=1500, run_id="cap")
+    cm = _meta(tmp_path, program="cm", status="completed", stop_reason="horizon",
+               n_interactions=1500, horizon=1500, run_id="cm")
+    kwargs = dict(cap_phase1=1500, phase2_horizon=1500, continue_gated=True)
+    rows = extend_bounds(tmp_path, "gemma4_31b", **kwargs)
+    assert len(rows) == 1
+    assert read_meta(path) == original
+    extend_bounds(tmp_path, "gemma4_31b", apply=True, **kwargs)
+    reopened = read_meta(path)
+    assert reopened["bound_extensions"][0]["original_meta"] == original
+    assert reopened["run_status"] == "in_progress"
+    assert reopened["gate_passed"] is True
+    assert reopened["phase2_horizon"] is None
+    assert read_meta(capped)["run_status"] == "censored"
+    assert read_meta(cm)["run_status"] == "completed"
+    assert extend_bounds(tmp_path, "gemma4_31b", apply=True, **kwargs) == []
+
+
+def test_continue_gated_refuses_changed_cap(tmp_path: Path):
+    path = _meta(tmp_path, program="emergence", status="completed", stop_reason="gate",
+                 n_interactions=200, cap=1500)
+    meta = read_meta(path)
+    meta.update(gate_passed=True, t_gate=200)
+    write_meta(path, meta)
+    with pytest.raises(ExtendBoundsError, match="unchanged"):
+        extend_bounds(tmp_path, "gemma4_31b", cap_phase1=4500, phase2_horizon=1500,
+                      continue_gated=True, apply=True)
+    assert read_meta(path) == meta

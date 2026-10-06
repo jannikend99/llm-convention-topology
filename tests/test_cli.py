@@ -9,6 +9,18 @@ import run_one
 
 
 class DirtyGitCliTests(unittest.TestCase):
+    def test_continue_gated_cannot_run_tasks_or_other_admin_operations(self):
+        for extra in (["--task", "emergence:mixing:0-1"], ["--extend-bounds"],
+                      ["--post-gate-only"]):
+            with self.subTest(extra=extra), self.assertRaises(SystemExit):
+                run_main.main(["--campaign", "experiment", "--model", "gemma4_31b",
+                               "--continue-gated", *extra])
+
+    def test_post_gate_only_refuses_study2(self):
+        with self.assertRaises(SystemExit):
+            run_main.main(["--campaign", "experiment", "--model", "gemma4_31b",
+                           "--post-gate-only", "--task", "cm:mixing:0-1:k=5"])
+
     def test_require_clean_worktree_raises(self):
         with patch("convention_topology.git_guard.subprocess.check_output", side_effect=[" M foo.py\n", "abc123\n"]):
             with self.assertRaises(DirtyWorktreeError):

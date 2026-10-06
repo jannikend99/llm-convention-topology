@@ -18,6 +18,91 @@
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
+
+# A group uses one allocation, loading its two models sequentially. Each child
+# runs the existing single-model path and keeps the original campaign arguments.
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
+MODEL_GROUP=""
+GROUP_ARGS=()
+GROUP_HAS_MODEL=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --model-group)
+      [[ $# -ge 2 ]] || { echo "--model-group requires a value" >&2; exit 2; }
+      [[ -z "${MODEL_GROUP}" ]] || { echo "duplicate --model-group" >&2; exit 2; }
+      MODEL_GROUP="$2"
+      [[ -n "${MODEL_GROUP}" ]] || { echo "--model-group requires a value" >&2; exit 2; }
+      shift 2
+      ;;
+    --model-group=*)
+      [[ -z "${MODEL_GROUP}" ]] || { echo "duplicate --model-group" >&2; exit 2; }
+      MODEL_GROUP="${1#--model-group=}"
+      [[ -n "${MODEL_GROUP}" ]] || { echo "--model-group requires a value" >&2; exit 2; }
+      shift
+      ;;
+    --model|--model=*)
+      GROUP_HAS_MODEL=1
+      GROUP_ARGS+=("$1")
+      shift
+      ;;
+    *)
+      GROUP_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+set -- "${GROUP_ARGS[@]+"${GROUP_ARGS[@]}"}"
+if [[ -n "${MODEL_GROUP}" ]]; then
+  [[ "${GROUP_HAS_MODEL}" -eq 0 ]] || { echo "--model-group cannot be combined with --model" >&2; exit 2; }
+  [[ -z "${DIAG_LADDER:-}" ]] || { echo "--model-group cannot be combined with DIAG_LADDER" >&2; exit 2; }
+  case "${MODEL_GROUP}" in
+    gemma-glm) GROUP_MODELS=(gemma4_31b glm4_32b) ;;
+    olmo-qwen) GROUP_MODELS=(olmo31_32b qwen38_27b) ;;
+    *) echo "--model-group must be gemma-glm or olmo-qwen" >&2; exit 2 ;;
+  esac
+  GROUP_CHILD_PID=""
+  GROUP_LAUNCHING=0
+  GROUP_STOP_SIGNAL=""
+  GROUP_STOP_STATUS=0
+  stop_group() {
+    local signal="$1" status="$2"
+    if [[ "${GROUP_LAUNCHING}" -eq 1 ]]; then
+      GROUP_STOP_SIGNAL="${signal}"
+      GROUP_STOP_STATUS="${status}"
+      return
+    fi
+    trap '' USR1 TERM INT
+    if [[ -n "${GROUP_CHILD_PID}" ]]; then
+      kill -"${signal}" "${GROUP_CHILD_PID}" 2>/dev/null || true
+      wait "${GROUP_CHILD_PID}" 2>/dev/null || true
+    fi
+    exit "${status}"
+  }
+  trap 'stop_group USR1 0' USR1
+  trap 'stop_group TERM 143' TERM
+  trap 'stop_group TERM 130' INT
+  for group_model in "${GROUP_MODELS[@]}"; do
+    echo "[model-group] starting ${group_model} in ${MODEL_GROUP}"
+    GROUP_LAUNCHING=1
+    VLLM_LOG_SUFFIX="_${group_model}" bash "${SLURM_SUBMIT_DIR}/jobs/thesis_vllm.slurm" \
+      --model "${group_model}" "${GROUP_ARGS[@]+"${GROUP_ARGS[@]}"}" &
+    GROUP_CHILD_PID=$!
+    GROUP_LAUNCHING=0
+    if [[ -n "${GROUP_STOP_SIGNAL}" ]]; then
+      stop_group "${GROUP_STOP_SIGNAL}" "${GROUP_STOP_STATUS}"
+    fi
+    group_rc=0
+    wait "${GROUP_CHILD_PID}" || group_rc=$?
+    GROUP_CHILD_PID=""
+    if [[ "${group_rc}" -ne 0 ]]; then
+      echo "[model-group] ${group_model} failed (${group_rc}); group stopped" >&2
+      exit "${group_rc}"
+    fi
+  done
+  exit 0
+fi
 # shellcheck source=jobs/_yen_scratch.sh
 source "${SLURM_SUBMIT_DIR}/jobs/_yen_scratch.sh"
 resolve_yen_scratch
@@ -75,7 +160,11 @@ else
 fi
 
 VENV="${SCRATCH}/venvs/thesis"
-VLLM_LOG="${SCRATCH}/vllm/thesis_${SLURM_JOB_ID}.log"
+if [[ -n "${VLLM_LOG_SUFFIX:-}" ]]; then
+  VLLM_LOG="${SCRATCH}/vllm/thesis_${SLURM_JOB_ID}${VLLM_LOG_SUFFIX}.log"
+else
+  VLLM_LOG="${SCRATCH}/vllm/thesis_${SLURM_JOB_ID}.log"
+fi
 
 # Parse argv after `--` (sbatch ... thesis_vllm.slurm -- --campaign … --task …).
 if [[ "${1:-}" == "--" ]]; then

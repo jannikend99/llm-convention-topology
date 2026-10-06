@@ -64,6 +64,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--watch", action="store_true")
     parser.add_argument("--reopen-failed", action="store_true")
     parser.add_argument("--extend-bounds", action="store_true")
+    parser.add_argument("--continue-gated", action="store_true",
+                        help="Reopen only gated Study 1 runs to their unchanged cap (dry-run unless --apply).")
+    parser.add_argument("--post-gate-only", action="store_true",
+                        help="Execute only existing runs selected with --continue-gated; never create new runs.")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--task", action="append", default=[], dest="tasks")
     parser.add_argument("--model", default=None)
@@ -96,18 +100,20 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--watch cannot be combined with --print-queue")
     if args.tech_check_n is not None and not args.tech_check:
         parser.error("--tech-check-n requires --tech-check")
-    if args.apply and not (args.reopen_failed or args.extend_bounds):
-        parser.error("--apply requires --reopen-failed or --extend-bounds")
-    if args.reopen_failed and args.extend_bounds:
-        parser.error("--reopen-failed cannot be combined with --extend-bounds")
+    if args.apply and not (args.reopen_failed or args.extend_bounds or args.continue_gated):
+        parser.error("--apply requires --reopen-failed, --extend-bounds or --continue-gated")
+    if sum((args.reopen_failed, args.extend_bounds, args.continue_gated)) > 1:
+        parser.error("reopen/extend/continue operations cannot be combined")
     reopen_blockers = (
         ("--task", bool(args.tasks)),
         ("--health", args.health),
         ("--watch", args.watch),
         ("--tech-check", args.tech_check),
         ("--print-queue", args.print_queue),
+        ("--post-gate-only", args.post_gate_only),
     )
-    for flag_name, active in (("--reopen-failed", args.reopen_failed), ("--extend-bounds", args.extend_bounds)):
+    for flag_name, active in (("--reopen-failed", args.reopen_failed), ("--extend-bounds", args.extend_bounds),
+                              ("--continue-gated", args.continue_gated)):
         if not active:
             continue
         for flag, on in reopen_blockers:
@@ -195,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
             print("pass --apply to set those sidecars to interrupted", flush=True)
         return 0
 
-    if args.extend_bounds:
+    if args.extend_bounds or args.continue_gated:
         if not args.campaign:
             parser.error("--campaign is required")
         if not args.model:
@@ -209,6 +215,7 @@ def main(argv: list[str] | None = None) -> int:
                 cap_phase1=int(config["protocol"]["cap_phase1"]),
                 phase2_horizon=int(config["protocol"]["phase2_horizon"]),
                 apply=bool(args.apply),
+                continue_gated=bool(args.continue_gated),
             )
         except ExtendBoundsError as exc:
             print(str(exc), flush=True)
@@ -216,7 +223,8 @@ def main(argv: list[str] | None = None) -> int:
         mode = "applied" if args.apply else "dry-run"
         eligible = [row for row in rows if not row.get("skipped")]
         skipped = [row for row in rows if row.get("skipped")]
-        print(f"extend-bounds {mode} model={args.model} campaign={args.campaign}", flush=True)
+        operation = "continue-gated" if args.continue_gated else "extend-bounds"
+        print(f"{operation} {mode} model={args.model} campaign={args.campaign}", flush=True)
         print(f"eligible {len(eligible)} skipped {len(skipped)}", flush=True)
         for row in eligible:
             print(
@@ -232,6 +240,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.tasks:
         parser.error("at least one --task is required")
+
+    if args.post_gate_only and any(not spec.startswith("emergence:") for spec in args.tasks):
+        parser.error("--post-gate-only requires only emergence tasks")
 
     cells = _parse_task_list(parser, args.tasks)
     if args.print_queue:
@@ -275,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
         campaign,
         REPO_ROOT,
     )
-    asyncio.run(
+    statuses = asyncio.run(
         run_slice_async(
             config,
             model_spec,
@@ -284,9 +295,10 @@ def main(argv: list[str] | None = None) -> int:
             mock_policy=args.mock_policy,
             require_clean=False,
             task_argv=args.tasks,
+            **({"post_gate_only": True} if args.post_gate_only else {}),
         )
     )
-    return 0
+    return 2 if args.post_gate_only and "failed" in statuses else 0
 
 
 if __name__ == "__main__":

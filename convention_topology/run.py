@@ -467,6 +467,13 @@ def _sidecar(cfg: RunConfig, run_id: str, run_key: dict, state: RunState, *, sta
             "n_models_in_run": 1,
         }
     )
+    observation = next((item for item in state.bound_extensions
+                        if item.get("field") == "post_gate_observation"), None)
+    if observation is not None and cfg.program == PROGRAM_EMERGENCE:
+        original = observation["original_meta"]
+        meta["gate_passed"] = original["gate_passed"]
+        meta["t_gate"] = original["t_gate"]
+        meta["t_phase1_end"] = len(state.tracker["outcome"])
     if cfg.provider == "mock":
         meta["provider"] = "openai_compat"
     return meta
@@ -1021,8 +1028,11 @@ async def execute_run_async(
         boundary("after_sidecar")
 
         horizon = cfg.max_phase1_interactions if cfg.program == PROGRAM_EMERGENCE else cfg.phase2_horizon
+        post_gate = cfg.program == PROGRAM_EMERGENCE and any(
+            item.get("field") == "post_gate_observation" for item in state.bound_extensions
+        )
         while True:
-            if cfg.program == PROGRAM_EMERGENCE and has_tracker_converged(state.tracker, window=cfg.gate_window):
+            if cfg.program == PROGRAM_EMERGENCE and not post_gate and has_tracker_converged(state.tracker, window=cfg.gate_window):
                 break
             if len(state.tracker["outcome"]) >= horizon:
                 break
@@ -1049,6 +1059,8 @@ async def execute_run_async(
                 t_phase1_end=len(state.tracker["outcome"]),
             )
             status, stop_reason = gate.run_status, gate.stop_reason
+            if post_gate:
+                status, stop_reason = "completed", "horizon"
             state.convergence["converged_index"] = gate.t_gate
         else:
             extra.update(gate_passed=None, t_gate=None, t_phase1_end=None)

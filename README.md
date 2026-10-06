@@ -43,6 +43,78 @@ Operator packet: thesis `specs/yen-configuration.md` and `specs/counted-job-queu
 Campaign artifacts: laptop default `data/runs/<campaign>/` (gitignored). Do not use a leftover repo-root `runs/` tree. On Yen pass `--artifact-root /scratch/shared/$USER/runs/<campaign>/` (do not append the campaign name twice).
 
 
+## Continue gated Study 1 Main runs to interaction 1500
+
+Run this in the Yen Jupyter Terminal, from the repository root, using the existing
+campaign artifacts. This resumes the saved agent histories and RNG state. It
+keeps the first gate event and the original cap of 1500; it disables gate stopping
+only for the selected continuation runs. Study 2 and completed cap runs are not
+reopened. Do not run the administrative commands while a campaign job is active.
+
+First inspect all four models without changing any files:
+
+```bash
+unset DIAG_LADDER MODEL_ID DTYPE MAX_MODEL_LEN MAX_NUM_SEQS TP
+unset PILOT_CAP_PHASE1 PILOT_PHASE2_HORIZON DIAG_N DIAG_H DIAG_POOL DIAG_DECODE DIAG_CAP DIAG_TECH_INTERACTIONS
+for model in gemma4_31b glm4_32b olmo31_32b qwen38_27b; do
+  /scratch/shared/jendress/venvs/thesis/bin/python run_main.py \
+    --campaign experiment --model "$model" \
+    --artifact-root /scratch/shared/jendress/runs/experiment --continue-gated
+done
+```
+
+After reviewing the eligible runs, apply once before submitting jobs:
+
+```bash
+for model in gemma4_31b glm4_32b olmo31_32b qwen38_27b; do
+  /scratch/shared/jendress/venvs/thesis/bin/python run_main.py \
+    --campaign experiment --model "$model" \
+    --artifact-root /scratch/shared/jendress/runs/experiment --continue-gated --apply
+done
+```
+
+`--continue-gated` is an administrative operation; it cannot be combined with
+`--task`. The submitted jobs use `--post-gate-only`: they only resume selected
+continuation runs, skip completed runs, and do not start missing seeds or retry
+original failed runs. Each job has one 24-hour GPU allocation and runs its two models
+sequentially on the same two GPUs. The two jobs may run concurrently if GPUs are
+available. Yen's published GPU limit is 24 hours; that limit applies to the whole
+group, not to each model. The commands below create two model-group chains, each
+with two 24-hour allocations (four allocations total). Each second allocation
+starts after the first ends, even if the first fails or reaches its time limit.
+
+```bash
+unset DIAG_LADDER MODEL_ID DTYPE MAX_MODEL_LEN MAX_NUM_SEQS TP
+unset PILOT_CAP_PHASE1 PILOT_PHASE2_HORIZON DIAG_N DIAG_H DIAG_POOL DIAG_DECODE DIAG_CAP DIAG_TECH_INTERACTIONS
+for group in gemma-glm olmo-qwen; do
+  job_args=(
+    -G 2 --mem=128G --time=1-00:00:00 --job-name="gate-${group}"
+    --export=ALL jobs/thesis_vllm.slurm --
+    --campaign experiment --model-group "$group" --post-gate-only
+    --artifact-root /scratch/shared/jendress/runs/experiment
+    --task emergence:mixing:0-32 --task emergence:lattice:0-32
+    --task emergence:random_regular:0-32 --task emergence:watts_strogatz:0-32
+    --task emergence:barabasi_albert:0-32
+  )
+  first_submit=$(sbatch --parsable "${job_args[@]}") || break
+  first_id="${first_submit%%;*}"
+  second_submit=$(sbatch --parsable --dependency="afterany:${first_id}" "${job_args[@]}") || break
+  second_id="${second_submit%%;*}"
+  echo "$group: first=$first_id second=$second_id"
+done
+```
+
+The group exits on a model failure. On the scheduler's pre-timeout signal it
+forwards the signal to the active child, checkpoints through the existing runner
+shutdown, and does not start the next model. The queued second allocation resumes
+interrupted work and skips completed runs. If both models completed in the first
+allocation, the second does not repeat their interactions. Do not submit duplicate
+chains while these jobs are pending or running. Grouped vLLM logs have a model
+suffix, for example
+`thesis_<job_id>_gemma4_31b.log`, so the second server does not overwrite the first.
+JEV is not included in these two vLLM job chains.
+
+
 ## Main campaign data backup
 
 The Yen `experiment` campaign snapshot packed on 2026-10-02 is backed up as an

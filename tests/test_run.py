@@ -49,6 +49,71 @@ def _cfg(program: str, tmp: Path, **overrides):
 
 
 class RecordingTests(unittest.TestCase):
+    def test_post_gate_only_skips_missing_and_unselected_runs(self):
+        from unittest.mock import patch
+        from convention_topology.orchestration import run_slice_async
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_EMERGENCE, root, max_phase1_interactions=2)
+            client = MockLLMClient(policy="always", rng=random.Random(0),
+                                   options=list(cfg.options), always_label=cfg.options[0])
+            paths = execute_run(cfg, client, campaign_dir=root)
+            original = paths.meta_path.read_bytes()
+            config = load_config()
+            spec = resolve_model(config, "mock")
+            cells = [dict(program="emergence", topology="mixing", seed_index=i, cm_k=None)
+                     for i in (0, 1)]
+            with patch("convention_topology.orchestration.build_client") as build:
+                statuses = asyncio.run(run_slice_async(config, spec, cells=cells,
+                                                       campaign_dir=root, post_gate_only=True))
+            self.assertEqual(statuses, ["skipped", "skipped"])
+            build.assert_not_called()
+            self.assertEqual(paths.meta_path.read_bytes(), original)
+            self.assertEqual(len(list((root / "runs").rglob("*.meta.json"))), 1)
+
+    def test_post_gate_observation_preserves_prefix_and_resumes_after_interrupt(self):
+        from convention_topology.persistence import load_run_pickle
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg, _ = _cfg(PROGRAM_EMERGENCE, root, n=8, max_phase1_interactions=8, gate_window=2)
+            client = MockLLMClient(policy="always", rng=random.Random(0),
+                                   options=list(cfg.options), always_label=cfg.options[0])
+            paths = execute_run(cfg, client, campaign_dir=root)
+            original = read_meta(paths.meta_path)
+            prefix = load_run_pickle(paths.pickle_path)
+            self.assertEqual(original["n_interactions"], 2)
+            rows = extend_bounds(root, cfg.model_shorthand, cap_phase1=8, phase2_horizon=1500,
+                                 continue_gated=True, apply=True)
+            self.assertEqual(len(rows), 1)
+            def interrupt(kind):
+                if kind == "after_interaction":
+                    raise StopRequested("killed")
+            execute_run(cfg, client, campaign_dir=root, on_stop=interrupt)
+            interrupted = read_meta(paths.meta_path)
+            self.assertEqual(interrupted["run_status"], "interrupted")
+            self.assertEqual(interrupted["t_gate"], 2)
+            self.assertTrue(interrupted["gate_passed"])
+            execute_run(cfg, client, campaign_dir=root)
+            final = read_meta(paths.meta_path)
+            self.assertEqual(final["n_interactions"], 8)
+            self.assertEqual(final["stop_reason"], "horizon")
+            self.assertEqual(final["t_gate"], 2)
+            self.assertEqual(final["bound_extensions"][0]["original_meta"], original)
+            tracker = load_run_pickle(paths.pickle_path)["tracker"]
+            for key in ("players", "answers", "outcome"):
+                self.assertEqual(tracker[key][:2], prefix["tracker"][key])
+            # A fresh uninterrupted run with gate window beyond the cap has the
+            # same pair/option streams as the resumed run.
+            other = root / "control"
+            other_cfg, _ = _cfg(PROGRAM_EMERGENCE, other, n=8, max_phase1_interactions=8, gate_window=144)
+            other_client = MockLLMClient(policy="always", rng=random.Random(0),
+                                         options=list(other_cfg.options), always_label=other_cfg.options[0])
+            control_paths = execute_run(other_cfg, other_client, campaign_dir=other)
+            control = load_run_pickle(control_paths.pickle_path)["tracker"]
+            self.assertEqual(tracker, control)
+            execute_run(cfg, client, campaign_dir=root)
+            self.assertEqual(read_meta(paths.meta_path)["n_interactions"], 8)
+
     def test_mock_cm_writes_three_artifacts_and_campaign_root(self):
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
