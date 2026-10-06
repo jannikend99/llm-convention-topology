@@ -4,6 +4,10 @@ Thesis experiment code for network topology × convention emergence and stabilit
 
 Counted path: local OpenAI-compatible vLLM (`provider: openai_compat`) or `mock`. Protocol locks live in the thesis specs, mirrored by `config.yaml`.
 
+Small auxiliary counterfactual tests (name, prompt order, schema order, and mismatch
+episode recency) live separately in [diagnostics/name_response_probe](diagnostics/name_response_probe/README.md).
+That folder includes a bounded Yen job and does not use the counted network pipeline.
+
 ## Locks (mirrored in `config.yaml`)
 
 | Item | Value |
