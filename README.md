@@ -49,6 +49,21 @@ Operator packet: thesis `specs/yen-configuration.md` and `specs/counted-job-queu
 
 Campaign artifacts: laptop default `data/runs/<campaign>/` (gitignored). Do not use a leftover repo-root `runs/` tree. On Yen pass `--artifact-root /scratch/shared/$USER/runs/<campaign>/` (do not append the campaign name twice).
 
+## Inspect recorded Yen runtime details
+
+From the repository root in the Yen Jupyter Terminal, run:
+
+```bash
+bash jobs/yen_runtime_audit.sh
+```
+
+The script reads historical Slurm accounting, retained job/server logs, and the
+existing vLLM container. It does not allocate GPUs or run model inference. Output
+is also saved to `yen-runtime-audit-2026-10-26.txt` in the current directory.
+Container versions inspected now describe the historical runtime only if the
+image used by the campaign is confirmed unchanged. Missing logs or accounting
+fields remain evidence limits.
+
 
 ## Continue gated Study 1 Main runs to interaction 1500
 
