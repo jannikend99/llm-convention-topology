@@ -1,0 +1,575 @@
+{
+  "schema": "thesis-reproduction.stages.v1",
+  "default_report": [
+    "fixed-horizon",
+    "qualitative",
+    "role-firth",
+    "role-standardized",
+    "study1-figures",
+    "cm-figures",
+    "cm-current-role-time",
+    "human-figure",
+    "visible-functions",
+    "frozen-function-backends",
+    "glm-figures",
+    "network-figure"
+  ],
+  "default_reconstruct": [
+    "raw-endpoints",
+    "human-windows",
+    "role-sensitivity",
+    "thresholds",
+    "stability",
+    "label-ecology"
+  ],
+  "stages": [
+    {
+      "id": "fixed-horizon",
+      "script": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/fixed_horizon.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/H1-fixed1500.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/H2-fixed1500.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/descriptives-fixed1500.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/gate-quotas-times.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/study1-fixed1500-runs.csv"
+      ],
+      "required_outputs": [],
+      "raw_required": false,
+      "family": "Primary H1/H2, final1500 descriptive endpoints and first-gate reporting",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "specs/results-analysis/main-runs-2026-10-05/H1.csv",
+        "specs/results-analysis/main-runs-2026-10-05/H2.csv"
+      ],
+      "canonical_figures": {}
+    },
+    {
+      "id": "qualitative",
+      "script": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/qualitative/aggregate_codes.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/qualitative/q1-category-descriptives.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/qualitative/q1-language-descriptives.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/qualitative/sample-composition.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/qualitative/q1-category-overlap.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/qualitative/q1-mechanical-correspondence-descriptives.csv"
+      ],
+      "required_outputs": [],
+      "raw_required": false,
+      "family": "Aggregation of supplied frozen adjudicated research annotations",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/qualitative/q1-adjudicated-codes.jsonl",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/qualitative/q1-selected-metadata.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/qualitative/mechanical-context-correspondence.csv"
+      ],
+      "canonical_figures": {}
+    },
+    {
+      "id": "role-firth",
+      "script": "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/role_firth_moderation.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/role-firth-moderation.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/h3a-firth-crosscheck.csv"
+      ],
+      "required_outputs": [],
+      "raw_required": false,
+      "family": "Current retrospective role-adjusted model fits",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18060/H3a-likelihood-supremum-and-sensitivities.csv"
+      ],
+      "canonical_figures": {}
+    },
+    {
+      "id": "role-standardized",
+      "script": "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/analyze_role_standardized.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/equal-role-cells.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/equal-role-topology-contrasts.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/equal-role-size-moderation.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/moderation-status.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/retained-run-manifest.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/role-standardized-rq3.pdf"
+      ],
+      "required_outputs": [],
+      "raw_required": true,
+      "family": "Current RQ3 role-standardized estimates and figure",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "specs/results-analysis/main-runs-2026-10-05/H3.csv",
+        "specs/results-analysis/main-runs-2026-10-05/k01-sensitivity/k01-qwen-failed-runs.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/role-firth-moderation.csv",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/qwen38_27b/**/*.meta.json"
+      ],
+      "canonical_figures": {
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/role-standardized-rq3.pdf": "02_Topic/Thesis_Writing/figures/role-standardized-rq3.pdf"
+      }
+    },
+    {
+      "id": "study1-figures",
+      "script": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/render_study1.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/thesis-emergence-endpoints.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/study1-random-regular-trajectories.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/dynamic-emergence-region-growth.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/thesis-spatial-persistence.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/endpoint-display-summary.csv"
+      ],
+      "required_outputs": [],
+      "raw_required": false,
+      "family": "Four current Study1 displays from retained numeric inputs",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/study1-fixed1500-runs.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/random-regular-observed-trajectories.csv",
+        "specs/results-analysis/main-runs-2026-10-05/dynamic-emergence-paired-growth.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18077/retention-bootstrap.csv"
+      ],
+      "canonical_figures": {
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/thesis-emergence-endpoints.pdf": "02_Topic/Thesis_Writing/figures/thesis-emergence-endpoints.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/study1-random-regular-trajectories.pdf": "02_Topic/Thesis_Writing/figures/study1-random-regular-trajectories.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/dynamic-emergence-region-growth.pdf": "02_Topic/Thesis_Writing/figures/dynamic-emergence-region-growth.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/thesis-spatial-persistence.pdf": "02_Topic/Thesis_Writing/figures/thesis-spatial-persistence.pdf"
+      }
+    },
+    {
+      "id": "cm-figures",
+      "script": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/render_cm.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/dynamic-cm-uptake-trajectories.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/thesis-flip-probabilities.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/recheck-role-standardization.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/thesis-choice-rule-sensitivity.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/thesis-anomaly-traces.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/plotted-data.json",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/figure-followups-role-topology-pages.pdf"
+      ],
+      "required_outputs": [],
+      "raw_required": true,
+      "family": "Current CM uptake, probabilities, role, choice-rule and anomaly displays",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-verification.json",
+        "specs/results-analysis/main-runs-2026-10-05/dynamic-cm-checkpoints.csv",
+        "specs/results-analysis/main-runs-2026-10-05/dynamic-cm-summary.csv",
+        "specs/results-analysis/main-runs-2026-10-05/role-standardized-flips.csv",
+        "specs/results-analysis/main-runs-2026-10-05/figure-followups-role-topology-cells.csv",
+        "specs/results-analysis/main-runs-2026-10-05/mechanism-followups.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18060/role-rates-rmt.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18055/anomaly-selection.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18055/anomaly-checkpoints.csv",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*.pkl",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*.meta.json"
+      ],
+      "canonical_figures": {
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/dynamic-cm-uptake-trajectories.pdf": "02_Topic/Thesis_Writing/figures/dynamic-cm-uptake-trajectories.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/thesis-flip-probabilities.pdf": "02_Topic/Thesis_Writing/figures/thesis-flip-probabilities.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/recheck-role-standardization.pdf": "02_Topic/Thesis_Writing/figures/recheck-role-standardization.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/thesis-choice-rule-sensitivity.pdf": "02_Topic/Thesis_Writing/figures/thesis-choice-rule-sensitivity.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/thesis-anomaly-traces.pdf": "02_Topic/Thesis_Writing/figures/thesis-anomaly-traces.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/figure-followups-role-topology-pages.pdf": "02_Topic/Thesis_Writing/figures/figure-followups-role-topology-pages.pdf"
+      }
+    },
+    {
+      "id": "cm-current-role-time",
+      "script": "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/render_cm.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-label-role-flips.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-mixing-flip-time.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/dynamic-cm-coordination-partition.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/plotted-data.json"
+      ],
+      "required_outputs": [],
+      "raw_required": true,
+      "family": "Retained re-audit role and flip-time display versions",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-verification.json",
+        "specs/results-analysis/main-runs-2026-10-05/dynamic-cm-checkpoints.csv",
+        "specs/results-analysis/main-runs-2026-10-05/dynamic-cm-summary.csv",
+        "specs/results-analysis/main-runs-2026-10-05/role-standardized-flips.csv",
+        "specs/results-analysis/main-runs-2026-10-05/figure-followups-role-topology-cells.csv",
+        "specs/results-analysis/main-runs-2026-10-05/mechanism-followups.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18060/role-rates-rmt.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18055/anomaly-selection.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18055/anomaly-checkpoints.csv",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*.pkl",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*.meta.json"
+      ],
+      "canonical_figures": {
+        "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-label-role-flips.pdf": "02_Topic/Thesis_Writing/figures/thesis-label-role-flips.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-mixing-flip-time.pdf": "02_Topic/Thesis_Writing/figures/thesis-mixing-flip-time.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/dynamic-cm-coordination-partition.pdf": "02_Topic/Thesis_Writing/figures/dynamic-cm-coordination-partition.pdf"
+      }
+    },
+    {
+      "id": "human-figure",
+      "script": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18080/manuscript/render_human_comparison.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18080/manuscript/human-matched-concentration.pdf",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18080/manuscript/plotted-data.json"
+      ],
+      "required_outputs": [],
+      "raw_required": false,
+      "family": "Descriptive human benchmark graphic from cited supplied numeric inputs",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18059/matched-window-summary.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18080/manuscript/human-reference-input.json"
+      ],
+      "canonical_figures": {
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18080/manuscript/human-matched-concentration.pdf": "02_Topic/Thesis_Writing/figures/human-matched-concentration.pdf"
+      }
+    },
+    {
+      "id": "visible-functions",
+      "script": "02_Topic/Thesis_Writing/development/04_Results/baseline_response_slices.py",
+      "args": [],
+      "compare_outputs": [
+        "02_Topic/Thesis_Writing/development/04_Results/baseline_response_slice_predictions.csv",
+        "02_Topic/Thesis_Writing/figures/thesis-response-function-study1.pdf",
+        "02_Topic/Thesis_Writing/figures/thesis-response-function-study2.pdf"
+      ],
+      "required_outputs": [],
+      "raw_required": false,
+      "family": "Saved FULL_VISIBLE function evaluations and both response-function displays",
+      "inputs": [
+        "specs/results-analysis/individual-decision-audit/simplified-functions/fit_simplified.py",
+        "specs/results-analysis/individual-decision-audit/fitted-functions/fit_choices.py",
+        "specs/results-analysis/individual-decision-audit/simplified-functions/parameters-*.json"
+      ],
+      "canonical_figures": {
+        "02_Topic/Thesis_Writing/figures/thesis-response-function-study1.pdf": "02_Topic/Thesis_Writing/figures/thesis-response-function-study1.pdf",
+        "02_Topic/Thesis_Writing/figures/thesis-response-function-study2.pdf": "02_Topic/Thesis_Writing/figures/thesis-response-function-study2.pdf"
+      }
+    },
+    {
+      "id": "frozen-function-backends",
+      "script": "02_Topic/Experiment_Code/llm-convention-topology/jobs/reproduction_checks.py",
+      "args": [
+        "--package-root",
+        "{ROOT}",
+        "--output",
+        "{ROOT}/reproduction-checks/frozen-functions.json"
+      ],
+      "compare_outputs": [],
+      "required_outputs": [
+        "reproduction-checks/frozen-functions.json"
+      ],
+      "raw_required": false,
+      "family": "Bounded actual CFFI population/metric backend and saved retention API checks; no refit/full population rerun",
+      "inputs": [
+        "specs/results-analysis/individual-decision-audit/population-test/engine.py",
+        "specs/results-analysis/individual-decision-audit/simplified-functions/parameters-*.json",
+        "specs/results-analysis/individual-decision-audit/fitted-adoption/functions.json",
+        "specs/results-analysis/individual-decision-audit/fitted-adoption/response_function.py",
+        "02_Topic/Thesis_Writing/development/04_Results/baseline_response_slices.py"
+      ],
+      "canonical_figures": {}
+    },
+    {
+      "id": "glm-figures",
+      "script": "02_Topic/Thesis_Writing/development/04_Results/glm_results_figures.py",
+      "args": [],
+      "compare_outputs": [
+        "02_Topic/Thesis_Writing/figures/thesis-glm-emergence-trajectories.pdf",
+        "02_Topic/Thesis_Writing/figures/thesis-glm-network-snapshots.pdf"
+      ],
+      "required_outputs": [],
+      "raw_required": true,
+      "family": "GLM raw-history trajectory and graph snapshot displays",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/graphs.json",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/label_pool.json",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/glm4_32b/*/*"
+      ],
+      "canonical_figures": {
+        "02_Topic/Thesis_Writing/figures/thesis-glm-emergence-trajectories.pdf": "02_Topic/Thesis_Writing/figures/thesis-glm-emergence-trajectories.pdf",
+        "02_Topic/Thesis_Writing/figures/thesis-glm-network-snapshots.pdf": "02_Topic/Thesis_Writing/figures/thesis-glm-network-snapshots.pdf"
+      }
+    },
+    {
+      "id": "network-figure",
+      "script": "02_Topic/Thesis_Writing/development/03_Methods/network_topologies.py",
+      "args": [],
+      "compare_outputs": [
+        "02_Topic/Thesis_Writing/figures/thesis-network-topologies.pdf"
+      ],
+      "required_outputs": [],
+      "raw_required": true,
+      "family": "Campaign graph illustration from retained adjacency controls",
+      "inputs": [
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/graphs.json"
+      ],
+      "canonical_figures": {
+        "02_Topic/Thesis_Writing/figures/thesis-network-topologies.pdf": "02_Topic/Thesis_Writing/figures/thesis-network-topologies.pdf"
+      }
+    },
+    {
+      "id": "raw-endpoints",
+      "script": "02_Topic/Experiment_Code/llm-convention-topology/jobs/reproduction_raw_endpoints.py",
+      "args": [
+        "--package-root",
+        "{ROOT}",
+        "--output",
+        "{ROOT}/reproduction-checks/raw-endpoints"
+      ],
+      "compare_outputs": [],
+      "required_outputs": [
+        "reproduction-checks/raw-endpoints/raw-endpoint-reconstruction.csv",
+        "reproduction-checks/raw-endpoints/raw-endpoint-verification.json"
+      ],
+      "raw_required": true,
+      "family": "All2560 raw trackers; primary endpoint and CM strict-event reconstruction against retained reference rows",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-verification.json",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*"
+      ],
+      "canonical_figures": {}
+    },
+    {
+      "id": "human-windows",
+      "script": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18059/matched_windows.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18059/matched-window-runs.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18059/matched-window-summary.csv"
+      ],
+      "required_outputs": [],
+      "raw_required": true,
+      "family": "Raw matched-window human benchmark comparisons",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-verification.json",
+        "specs/results-analysis/main-runs-2026-10-05/common-horizon-bounds.csv",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*.pkl"
+      ],
+      "canonical_figures": {}
+    },
+    {
+      "id": "role-sensitivity",
+      "script": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18060/analyze_roles.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18060/role-rates-rmt.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18060/H3a-likelihood-supremum-and-sensitivities.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18060/FFH-exact-crosscheck.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18060/responsive-role-RMT-tests.csv"
+      ],
+      "required_outputs": [],
+      "raw_required": false,
+      "family": "Retained H3a/role sensitivity estimates",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "specs/results-analysis/main-runs-2026-10-05/k01-sensitivity/*.csv"
+      ],
+      "canonical_figures": {}
+    },
+    {
+      "id": "thresholds",
+      "script": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/thresholds/analyze_thresholds.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/thresholds/thresholds-by-run.csv"
+      ],
+      "required_outputs": [],
+      "raw_required": true,
+      "family": "Raw threshold sensitivity re-evaluation",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-verification.json",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*.pkl",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*.meta.json"
+      ],
+      "canonical_figures": {}
+    },
+    {
+      "id": "stability",
+      "script": "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18096/analyze_stability_robustness.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18096/threshold-by-run.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18096/threshold-by-cell.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18096/threshold-topology-contrasts.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18096/equal-role-threshold-cells.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18096/equal-role-threshold-contrasts.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18096/equal-role-threshold-did.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18096/postflip-loss-by-run.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18096/postflip-loss-by-cell.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18096/postflip-loss-summary.csv"
+      ],
+      "required_outputs": [],
+      "raw_required": true,
+      "family": "Current threshold, duration and post-flip stability reconstruction",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-verification.json",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/thresholds/thresholds-by-run.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/retained-run-manifest.csv",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*.pkl"
+      ],
+      "canonical_figures": {}
+    },
+    {
+      "id": "label-ecology",
+      "script": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18064/analyze_label_ecology.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18064/fixed1500-winners-by-run.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18064/first-choices-by-agent.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18064/first-choice-summary.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18064/first-choice-by-topology.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18064/mixing-winner-counts.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18064/H4-uniform-MC-tests.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18064/winner-agreement-permutation-tests.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18064/paired-winner-data.csv"
+      ],
+      "required_outputs": [],
+      "raw_required": true,
+      "family": "Current H4 label ecology and initial-choice reporting with fixed Monte Carlo procedure",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-verification.json",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*"
+      ],
+      "canonical_figures": {}
+    }
+  ],
+  "expensive_recipes": [
+    {
+      "purpose": "Full baseline population rerun, one Main cell family; repeat for the four Main models and both programs",
+      "command": "python specs/results-analysis/individual-decision-audit/population-test/run_population.py --model gemma4_31b --program emergence",
+      "executed_in_package_check": false
+    },
+    {
+      "purpose": "Refit simplified visible functions for one Main model/program; repeat for all eight Main combinations",
+      "command": "python specs/results-analysis/individual-decision-audit/simplified-functions/fit_simplified.py --model gemma4_31b --program emergence",
+      "executed_in_package_check": false
+    },
+    {
+      "purpose": "Refit chronology/calibration candidates, seal and evaluate using the frozen protocol in an isolated copy",
+      "commands": [
+        "python specs/results-analysis/individual-decision-audit/population-test/improvement.py fit --model gemma4_31b --program emergence",
+        "python specs/results-analysis/individual-decision-audit/population-test/improvement.py seal",
+        "python specs/results-analysis/individual-decision-audit/population-test/improvement.py evaluate --model gemma4_31b --program emergence"
+      ],
+      "executed_in_package_check": false
+    }
+  ],
+  "manuscript_figure_map": [
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/role-standardized-rq3.pdf",
+      "stage": "role-standardized",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/role-standardized-rq3.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-emergence-endpoints.pdf",
+      "stage": "study1-figures",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/thesis-emergence-endpoints.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/study1-random-regular-trajectories.pdf",
+      "stage": "study1-figures",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/study1-random-regular-trajectories.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/dynamic-emergence-region-growth.pdf",
+      "stage": "study1-figures",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/dynamic-emergence-region-growth.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-spatial-persistence.pdf",
+      "stage": "study1-figures",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/study1/thesis-spatial-persistence.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/dynamic-cm-uptake-trajectories.pdf",
+      "stage": "cm-figures",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/dynamic-cm-uptake-trajectories.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-flip-probabilities.pdf",
+      "stage": "cm-figures",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/thesis-flip-probabilities.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/recheck-role-standardization.pdf",
+      "stage": "cm-figures",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/recheck-role-standardization.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-choice-rule-sensitivity.pdf",
+      "stage": "cm-figures",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/thesis-choice-rule-sensitivity.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-anomaly-traces.pdf",
+      "stage": "cm-figures",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/thesis-anomaly-traces.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/figure-followups-role-topology-pages.pdf",
+      "stage": "cm-figures",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/figure-followups-role-topology-pages.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-label-role-flips.pdf",
+      "stage": "cm-current-role-time",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-label-role-flips.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-mixing-flip-time.pdf",
+      "stage": "cm-current-role-time",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-mixing-flip-time.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/dynamic-cm-coordination-partition.pdf",
+      "stage": "cm-current-role-time",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/dynamic-cm-coordination-partition.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/human-matched-concentration.pdf",
+      "stage": "human-figure",
+      "generated": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18080/manuscript/human-matched-concentration.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-response-function-study1.pdf",
+      "stage": "visible-functions",
+      "generated": "02_Topic/Thesis_Writing/figures/thesis-response-function-study1.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-response-function-study2.pdf",
+      "stage": "visible-functions",
+      "generated": "02_Topic/Thesis_Writing/figures/thesis-response-function-study2.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-glm-emergence-trajectories.pdf",
+      "stage": "glm-figures",
+      "generated": "02_Topic/Thesis_Writing/figures/thesis-glm-emergence-trajectories.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-glm-network-snapshots.pdf",
+      "stage": "glm-figures",
+      "generated": "02_Topic/Thesis_Writing/figures/thesis-glm-network-snapshots.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-network-topologies.pdf",
+      "stage": "network-figure",
+      "generated": "02_Topic/Thesis_Writing/figures/thesis-network-topologies.pdf"
+    }
+  ],
+  "excluded_figures": [
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/guilbeault-2026-naming-game-fig1.pdf",
+      "reason": "Third-party Theory image, not redistributed pending rights decision"
+    }
+  ]
+}

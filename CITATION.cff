@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the source repository and the thesis when available."
+title: "llm-convention-topology"
+authors:
+  - family-names: Endress
+    given-names: Jannik
+    affiliation: Technical University of Munich
+repository-code: "https://github.com/jannikend99/llm-convention-topology"
+url: "https://github.com/jannikend99/llm-convention-topology"
+abstract: "Experiment and analysis code for network topology, convention emergence, and committed-minority stability in LLM Naming Game populations."
+keywords:
+  - naming-game
+  - language-models
+  - network-topology
+  - convention-emergence

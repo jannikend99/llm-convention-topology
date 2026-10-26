@@ -62,17 +62,20 @@ seed indices `0..31`; emergence has no `--k`. Failed, interrupted, or unknown
 run states return a non-zero status. `completed`, `censored`, and an explicit
 post-gate `skipped` state are successful.
 
-The source handover is source-only. It does not deliver raw data, submit Yen
-jobs, or reproduce historical GPU campaigns. The current thesis analysis is
-maintained in the private meta-repository under
-`specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/`;
-this repository's `analyze.py` is the historical first-gate/cap analysis and
-does not regenerate the current fixed-1500 H1/H2 results. The source archive
-omits `archive/ops/`, TypeSafe material, Graphify output, local data/results,
-caches, and secrets; those paths remain in the working repository where
-needed. See [HANDOVER.md](HANDOVER.md) for the allowlist and archive check.
-The 2026-10-02 experiment backup is historical provenance only, not the final
-continuation data or analysis.
+The neutral thesis/publication supplement combines a frozen source/analysis
+archive with the separate complete Main-data archive. Start with
+[HANDOVER.md](HANDOVER.md) for restoration, integrity checks and real producer
+commands. Install `requirements-analysis.txt` for its additional CFFI/compiler
+and PDF-comparison checks. The package includes the actual current analysis
+sources and research inputs; recipients do not need the private authoring
+repositories. Its manifest binds the included manuscript state.
+
+This repository's root `analyze.py` remains the earlier first-gate/cap
+pipeline. Use `jobs/reproduce_thesis.py list` for the current fixed-1,500 and
+retrospective reporting stages. The October 2 experiment backup is historical
+and does not contain the final continuation data. The supplement excludes
+unrelated JEV/pilot datasets and working notes; it does not publish data,
+register a DOI, grant a new license or execute new LLM experiments.
 
 Yen: clone/pull `/scratch/shared/$USER/exp/llm-convention-topology`, then from the repo root in the Jupyter Terminal:
 

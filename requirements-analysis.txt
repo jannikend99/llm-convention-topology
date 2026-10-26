@@ -1,0 +1,7 @@
+# Current analysis additions to the tested source dependency snapshot.
+# These are reconstruction dependencies, not a historical Yen lock.
+-r requirements-repro.txt
+
+cffi==2.1.0
+pycparser==3.0
+pypdf==6.21.2
