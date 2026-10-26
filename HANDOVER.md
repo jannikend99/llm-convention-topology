@@ -75,7 +75,9 @@ output in the new work copy, executes the actual producer, and checks the
 new result against its supplied reference. Original research inputs and
 archive contents are not overwritten.
 
-The default reporting pass regenerates primary H1/H2 summaries, current
+The default reporting pass executes fifteen producers. It regenerates primary
+fixed-1,500 H1/H2 inferential statistics, the retrospective bounded-mean H1
+sensitivity from 128 actual raw final windows, current
 role-adjusted reporting, qualitative aggregates, saved visible response
 figures, human comparisons, and the retained Study 1/Study 2, GLM and network
 figures. CSV and scientific JSON outputs use explicit numeric tolerances
@@ -84,11 +86,38 @@ text; relevant numeric plotted data are checked separately. PDF byte or pixel
 identity is not claimed. Each stage has a log and an explicit comparison
 record in `reproduction-report.json`. Approved outputs are copied immediately
 into `reproduced-figures/` using the explicit manuscript-to-producer map. The
-full reporting pass requires all twenty project-generated thesis PDFs there;
+full reporting pass requires all twenty-one project-generated thesis PDFs there;
 extra side outputs from older renderer variants cannot replace that set.
 Interword dash extraction is normalized for PDF text comparison; numeric
 minus signs remain significant. No plotted geometry or pixel identity is
 inferred from extracted text.
+
+The `final-role-figures` stage owns the current three role PDFs, including
+`role-standardized-rq3-rates.pdf`, the 32 plotted moderation contrasts and the
+generated 120-cell `chapters/99_Study2_Role_Cells.tex`. The generated TeX is
+compared byte for byte. Older R1 and role-analysis display variants remain
+producer crosschecks and cannot replace these canonical figures.
+
+Current primary inferential exports are under
+`audit-corrections/per18062/`, with endpoint inputs under
+`audit-corrections/per18057/`. Root `H1.csv`, `H2.csv` and the Study 1 endpoint
+columns in `hypothesis-run-data.csv` describe the historical gate/cap analysis;
+they are retained only where original producers need crosschecks or other
+columns. They must not be presented as the current primary endpoint results.
+The selected companion `results/run-outcomes.csv` harmonizes all 2,560 attempts
+with the actual final Study 1 endpoints and retained Study 2 manifest. It is a
+supplied export; its `source-map.json` records the exact joins and source hashes.
+The raw endpoint stage independently checks the underlying endpoints.
+
+The supplied companion `documentation/response-analysis-complete.tex` preserves
+the complete response-analysis documentation referenced by the shorter thesis
+appendix. The original qualitative codebook and adjudication rules accompany
+the frozen codes. Companion archive receipts, ZIP files and their assembly
+builder are excluded: those receipts identify a previous full-source package.
+The selected source map is provenance for companion exports, not an assertion
+that every companion member or its former archive receipt is distributed here.
+The manifest binds the current manuscript, bibliography, class/style, figure and
+separately supplied PDF identities without redistributing the full manuscript.
 
 Use repeated `--stage NAME` flags for a smaller declared subset. For example,
 the fixed-horizon and qualitative aggregate stages use supplied research

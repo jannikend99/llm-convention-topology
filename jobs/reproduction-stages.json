@@ -12,7 +12,10 @@
     "visible-functions",
     "frozen-function-backends",
     "glm-figures",
-    "network-figure"
+    "network-figure",
+    "primary-statistics",
+    "h1-bounded-mean",
+    "final-role-figures"
   ],
   "default_reconstruct": [
     "raw-endpoints",
@@ -36,7 +39,7 @@
       ],
       "required_outputs": [],
       "raw_required": false,
-      "family": "Primary H1/H2, final1500 descriptive endpoints and first-gate reporting",
+      "family": "Fixed1500 H1/H2 calculations and final endpoint summaries; historical root H1/H2 inputs are crosschecks, not current primary exports",
       "inputs": [
         "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
         "specs/results-analysis/main-runs-2026-10-05/H1.csv",
@@ -96,7 +99,7 @@
       ],
       "required_outputs": [],
       "raw_required": true,
-      "family": "Current RQ3 role-standardized estimates and figure",
+      "family": "Current RQ3 numerical estimates; historical rate display retained as a producer crosscheck",
       "inputs": [
         "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv",
         "specs/results-analysis/main-runs-2026-10-05/H3.csv",
@@ -104,9 +107,7 @@
         "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/role-firth-moderation.csv",
         "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/qwen38_27b/**/*.meta.json"
       ],
-      "canonical_figures": {
-        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/role-standardized-rq3.pdf": "02_Topic/Thesis_Writing/figures/role-standardized-rq3.pdf"
-      }
+      "canonical_figures": {}
     },
     {
       "id": "study1-figures",
@@ -203,7 +204,6 @@
         "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*.meta.json"
       ],
       "canonical_figures": {
-        "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-label-role-flips.pdf": "02_Topic/Thesis_Writing/figures/thesis-label-role-flips.pdf",
         "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-mixing-flip-time.pdf": "02_Topic/Thesis_Writing/figures/thesis-mixing-flip-time.pdf",
         "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/dynamic-cm-coordination-partition.pdf": "02_Topic/Thesis_Writing/figures/dynamic-cm-coordination-partition.pdf"
       }
@@ -441,6 +441,78 @@
         "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*"
       ],
       "canonical_figures": {}
+    },
+    {
+      "id": "primary-statistics",
+      "script": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/analysis_statistics.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/H1-statistics.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/H2-and-extensions-statistics.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/H3a-risk-differences.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/H3a-test-statistics.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/H3b-statistics.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/KW-statistics.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/secondary-test-statistics.json"
+      ],
+      "required_outputs": [],
+      "raw_required": false,
+      "family": "Current thesis fixed1500 H1/H2 inferential exports and audited H3/role statistics",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/study1-fixed1500-runs.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/H1-fixed1500.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/H2-fixed1500.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18060/role-rates-rmt.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18060/H3a-likelihood-supremum-and-sensitivities.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18060/responsive-role-RMT-tests.csv",
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18077/h3b-firth.csv",
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-results.json"
+      ],
+      "canonical_figures": {}
+    },
+    {
+      "id": "h1-bounded-mean",
+      "script": "specs/working-packages/post-review-finalization/h1/bounded_mean.py",
+      "args": [],
+      "compare_outputs": [
+        "specs/working-packages/post-review-finalization/h1/mixing-runs.csv",
+        "specs/working-packages/post-review-finalization/h1/sensitivity.csv",
+        "specs/working-packages/post-review-finalization/h1/evidence.json"
+      ],
+      "required_outputs": [],
+      "raw_required": true,
+      "family": "Retrospective bounded-mean H1 sensitivity from128 actual final raw windows",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/study1-fixed1500-runs.csv",
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-verification.json",
+        "02_Topic/Experiment_Code/llm-convention-topology/data/runs/experiment/runs/*/*/*"
+      ],
+      "canonical_figures": {}
+    },
+    {
+      "id": "final-role-figures",
+      "script": "02_Topic/Thesis_Writing/development/04_Results/final_role_figures.py",
+      "args": [],
+      "compare_outputs": [
+        "02_Topic/Thesis_Writing/figures/thesis-label-role-flips.pdf",
+        "02_Topic/Thesis_Writing/figures/role-standardized-rq3.pdf",
+        "02_Topic/Thesis_Writing/figures/role-standardized-rq3-rates.pdf",
+        "02_Topic/Thesis_Writing/chapters/99_Study2_Role_Cells.tex",
+        "specs/working-packages/post-review-finalization/figures/plotted-moderation-contrasts.csv"
+      ],
+      "required_outputs": [],
+      "raw_required": false,
+      "family": "Current three role displays,32 plotted contrasts and generated120-cell appendix table",
+      "inputs": [
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/equal-role-cells.csv",
+        "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/equal-role-size-moderation.csv",
+        "specs/results-analysis/main-runs-2026-10-05/hypothesis-run-data.csv"
+      ],
+      "canonical_figures": {
+        "02_Topic/Thesis_Writing/figures/thesis-label-role-flips.pdf": "02_Topic/Thesis_Writing/figures/thesis-label-role-flips.pdf",
+        "02_Topic/Thesis_Writing/figures/role-standardized-rq3.pdf": "02_Topic/Thesis_Writing/figures/role-standardized-rq3.pdf",
+        "02_Topic/Thesis_Writing/figures/role-standardized-rq3-rates.pdf": "02_Topic/Thesis_Writing/figures/role-standardized-rq3-rates.pdf"
+      }
     }
   ],
   "expensive_recipes": [
@@ -465,11 +537,6 @@
     }
   ],
   "manuscript_figure_map": [
-    {
-      "figure": "02_Topic/Thesis_Writing/figures/role-standardized-rq3.pdf",
-      "stage": "role-standardized",
-      "generated": "specs/results-analysis/main-runs-2026-10-05/grade-revision/per18095/role-standardized-rq3.pdf"
-    },
     {
       "figure": "02_Topic/Thesis_Writing/figures/thesis-emergence-endpoints.pdf",
       "stage": "study1-figures",
@@ -521,11 +588,6 @@
       "generated": "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18075/production/figure-followups-role-topology-pages.pdf"
     },
     {
-      "figure": "02_Topic/Thesis_Writing/figures/thesis-label-role-flips.pdf",
-      "stage": "cm-current-role-time",
-      "generated": "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-label-role-flips.pdf"
-    },
-    {
       "figure": "02_Topic/Thesis_Writing/figures/thesis-mixing-flip-time.pdf",
       "stage": "cm-current-role-time",
       "generated": "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-mixing-flip-time.pdf"
@@ -564,6 +626,21 @@
       "figure": "02_Topic/Thesis_Writing/figures/thesis-network-topologies.pdf",
       "stage": "network-figure",
       "generated": "02_Topic/Thesis_Writing/figures/thesis-network-topologies.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/thesis-label-role-flips.pdf",
+      "stage": "final-role-figures",
+      "generated": "02_Topic/Thesis_Writing/figures/thesis-label-role-flips.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/role-standardized-rq3.pdf",
+      "stage": "final-role-figures",
+      "generated": "02_Topic/Thesis_Writing/figures/role-standardized-rq3.pdf"
+    },
+    {
+      "figure": "02_Topic/Thesis_Writing/figures/role-standardized-rq3-rates.pdf",
+      "stage": "final-role-figures",
+      "generated": "02_Topic/Thesis_Writing/figures/role-standardized-rq3-rates.pdf"
     }
   ],
   "excluded_figures": [

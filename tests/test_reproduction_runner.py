@@ -244,5 +244,42 @@ class NumericalComparisonTests(unittest.TestCase):
                         runner.compare_csv(expected, actual)
 
 
+class CurrentManuscriptRegistryTests(unittest.TestCase):
+    def test_final_role_figures_have_one_current_owner(self):
+        registry = json.loads((MODULE.parent / 'reproduction-stages.json').read_text())
+        stages = {s['id']: s for s in registry['stages']}
+        expected = {'thesis-label-role-flips.pdf', 'role-standardized-rq3.pdf',
+                    'role-standardized-rq3-rates.pdf'}
+        for name in expected:
+            owners = [s['id'] for s in registry['stages']
+                      for figure in s.get('canonical_figures', {}).values()
+                      if Path(figure).name == name]
+            self.assertEqual(owners, ['final-role-figures'])
+        self.assertIn('final-role-figures', registry['default_report'])
+        self.assertTrue(any(p.endswith('99_Study2_Role_Cells.tex')
+                            for p in stages['final-role-figures']['compare_outputs']))
+        self.assertEqual(len(registry['manuscript_figure_map']), 21)
+
+    def test_current_statistics_and_raw_sensitivity_are_real_default_stages(self):
+        registry = json.loads((MODULE.parent / 'reproduction-stages.json').read_text())
+        stages = {s['id']: s for s in registry['stages']}
+        for name in ('primary-statistics', 'h1-bounded-mean'):
+            self.assertIn(name, registry['default_report'])
+            self.assertTrue(stages[name]['compare_outputs'])
+        self.assertTrue(stages['h1-bounded-mean']['raw_required'])
+        self.assertTrue(stages['primary-statistics']['script'].endswith('analysis_statistics.py'))
+
+    def test_generated_tex_requires_exact_bytes(self):
+        with TemporaryDirectory() as directory:
+            expected = Path(directory) / 'expected.tex'
+            actual = Path(directory) / 'actual.tex'
+            expected.write_text('Ever and Terminal')
+            actual.write_bytes(expected.read_bytes())
+            self.assertEqual(runner.comparison(expected, actual)['kind'], 'byte-identical')
+            actual.write_text('Ever and Changed')
+            with self.assertRaisesRegex(AssertionError, 'byte mismatch'):
+                runner.comparison(expected, actual)
+
+
 if __name__ == '__main__':
     unittest.main()

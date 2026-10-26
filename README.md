@@ -30,6 +30,13 @@ Its data and Yen jobs are separate from Main and the initial screening battery.
 
 ### Current source snapshot (2026-10-26)
 
+The neutral thesis reproduction package uses `requirements-analysis.txt` and
+[HANDOVER.md](HANDOVER.md). Its current reporting route includes final role
+figures and the retrospective H1 bounded-mean sensitivity, alongside the
+fixed-1,500 primary statistics. Historical root H1/H2 exports use gate/cap
+endpoints; use the handover stage map for the current thesis results.
+
+
 Python 3.12.1 on macOS ARM is the validated GPU-free setup. Run from a clean
 Git checkout; counted entry points refuse dirty trees so that the code revision
 is recorded with each artifact.

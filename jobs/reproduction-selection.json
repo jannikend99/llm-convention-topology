@@ -44,7 +44,22 @@
     "02_Topic/Thesis_Writing/development/04_Results/*predictions.csv",
     "specs/working-packages/experiment-source-handover/raw-data/*.py",
     "02_Topic/Experiment_Code/llm-convention-topology/tests/test_reproduction*.py",
-    "02_Topic/Experiment_Code/llm-convention-topology/jobs/reproduce_thesis.py"
+    "02_Topic/Experiment_Code/llm-convention-topology/jobs/reproduce_thesis.py",
+    "02_Topic/Thesis_Writing/development/04_Results/final_role_figures.py",
+    "02_Topic/Thesis_Writing/chapters/99_Study2_Role_Cells.tex",
+    "02_Topic/Thesis_Writing/figures/role-standardized-rq3-rates.pdf",
+    "specs/working-packages/post-review-finalization/figures/plotted-moderation-contrasts.csv",
+    "specs/working-packages/post-review-finalization/h1/bounded_mean.py",
+    "specs/working-packages/post-review-finalization/h1/test_bounded_mean.py",
+    "specs/working-packages/post-review-finalization/h1/mixing-runs.csv",
+    "specs/working-packages/post-review-finalization/h1/sensitivity.csv",
+    "specs/working-packages/post-review-finalization/h1/evidence.json",
+    "specs/working-packages/post-review-finalization/h1/README.md",
+    "specs/working-packages/post-review-finalization/supplement/package/documentation/response-analysis-complete.tex",
+    "specs/working-packages/post-review-finalization/supplement/package/results/run-outcomes.csv",
+    "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/codebook-proposal.md",
+    "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/qualitative/adjudication-rules.md",
+    "specs/working-packages/post-review-finalization/supplement/package/source-map.json"
   ],
   "required_files": [
     "02_Topic/Experiment_Code/llm-convention-topology/CITATION.cff",
@@ -138,7 +153,32 @@
     "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/plotted-data.json",
     "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/render_cm.py",
     "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-label-role-flips.pdf",
-    "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-mixing-flip-time.pdf"
+    "specs/results-analysis/main-runs-2026-10-05/reaudit-r1/figures/production/thesis-mixing-flip-time.pdf",
+    "02_Topic/Thesis_Writing/development/04_Results/final_role_figures.py",
+    "02_Topic/Thesis_Writing/chapters/99_Study2_Role_Cells.tex",
+    "02_Topic/Thesis_Writing/figures/role-standardized-rq3-rates.pdf",
+    "specs/working-packages/post-review-finalization/figures/plotted-moderation-contrasts.csv",
+    "specs/working-packages/post-review-finalization/h1/bounded_mean.py",
+    "specs/working-packages/post-review-finalization/h1/test_bounded_mean.py",
+    "specs/working-packages/post-review-finalization/h1/mixing-runs.csv",
+    "specs/working-packages/post-review-finalization/h1/sensitivity.csv",
+    "specs/working-packages/post-review-finalization/h1/evidence.json",
+    "specs/working-packages/post-review-finalization/h1/README.md",
+    "specs/working-packages/post-review-finalization/supplement/package/documentation/response-analysis-complete.tex",
+    "specs/working-packages/post-review-finalization/supplement/package/results/run-outcomes.csv",
+    "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/codebook-proposal.md",
+    "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18053/qualitative/adjudication-rules.md",
+    "specs/working-packages/post-review-finalization/supplement/package/source-map.json",
+    "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/analysis_statistics.py",
+    "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/H1-statistics.csv",
+    "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/H2-and-extensions-statistics.csv",
+    "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/H3a-risk-differences.csv",
+    "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/H3a-test-statistics.csv",
+    "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/H3b-statistics.csv",
+    "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/KW-statistics.csv",
+    "specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18062/secondary-test-statistics.json",
+    "02_Topic/Thesis_Writing/figures/thesis-label-role-flips.pdf",
+    "02_Topic/Thesis_Writing/figures/role-standardized-rq3.pdf"
   ],
   "copy_files": {
     "README.md": "02_Topic/Experiment_Code/llm-convention-topology/HANDOVER.md"
@@ -165,7 +205,11 @@
   "manuscript_bindings": [
     "02_Topic/Thesis_Writing/main.tex",
     "02_Topic/Thesis_Writing/chapters/*.tex",
-    "02_Topic/Thesis_Writing/figures/*.pdf"
+    "02_Topic/Thesis_Writing/figures/*.pdf",
+    "02_Topic/Thesis_Writing/literature.bib",
+    "02_Topic/Thesis_Writing/*.cls",
+    "02_Topic/Thesis_Writing/*.sty",
+    "02_Topic/Thesis_Writing/main.pdf"
   ],
   "rights_exceptions": [
     {
