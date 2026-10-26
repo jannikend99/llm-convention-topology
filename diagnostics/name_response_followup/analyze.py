@@ -7,8 +7,12 @@ import math
 import random
 from collections import Counter, defaultdict
 from pathlib import Path
-from design import make_cases, digest, MODELS
-from run import validate_resume, read_lines
+try:
+    from .design import make_cases, digest, MODELS
+    from .run import validate_resume, read_lines
+except ImportError:  # direct script execution from the repository checkout
+    from design import make_cases, digest, MODELS
+    from run import validate_resume, read_lines
 
 
 def write_csv(path, rows):

@@ -9,6 +9,8 @@ from pathlib import Path
 
 from convention_topology.campaign import ensure_campaign_files
 from convention_topology.config import (
+    K_SET,
+    TOPOLOGIES,
     ConfigError,
     apply_cli_protocol_env,
     check_campaign_name,
@@ -38,8 +40,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mock-policy", default="imitate_modal")
     args = parser.parse_args(argv)
 
-    if args.program == PROGRAM_CM and (args.cm_k is None or args.cm_k < 1):
-        parser.error("--k is required for --program cm")
+    if not args.campaign:
+        parser.error("--campaign is required")
+    if args.topology not in TOPOLOGIES:
+        parser.error(f"unknown topology {args.topology!r}; choose from {list(TOPOLOGIES)}")
+    if args.seed_index < 0:
+        parser.error("--seed-index must be non-negative")
+    if args.seed_index >= 32:
+        parser.error("--seed-index must be less than attempted_per_cell (32)")
+    if args.program == PROGRAM_CM and args.cm_k not in K_SET:
+        parser.error(f"--k is required for --program cm and must be one of {list(K_SET)}")
+    if args.program == PROGRAM_EMERGENCE and args.cm_k is not None:
+        parser.error("--k is only valid for --program cm")
     if args.program == PROGRAM_EMERGENCE:
         args.cm_k = None
 
@@ -49,14 +61,13 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), flush=True)
         return 2
 
-    config = load_config(args.config)
-    if args.campaign is not None:
-        config["run"]["campaign"] = check_campaign_name(args.campaign)
     try:
+        config = load_config(args.config)
+        config["run"]["campaign"] = check_campaign_name(args.campaign)
         apply_cli_protocol_env(config)
+        model_spec = resolve_model(config, args.model)
     except ConfigError as exc:
         parser.error(str(exc))
-    model_spec = resolve_model(config, args.model)
     campaign = str(config["run"]["campaign"])
     root = campaign_root(
         args.artifact_root if args.artifact_root is not None else config["run"]["artifact_root"],
@@ -89,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     paths = asyncio.run(_run())
     status = read_meta(paths.meta_path)["run_status"]
     print(f"[done] run_id={paths.pickle_path.stem} status={status}", flush=True)
-    return 0
+    return 0 if status in {"completed", "censored"} else 2
 
 
 if __name__ == "__main__":

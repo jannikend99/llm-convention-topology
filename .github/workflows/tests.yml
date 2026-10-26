@@ -9,5 +9,5 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -U pip && pip install -r requirements.txt -r requirements-dev.txt
-      - run: pytest tests -q
+      - run: pip install -U pip && pip install -r requirements-repro.txt
+      - run: pytest -q

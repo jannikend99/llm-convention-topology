@@ -9,6 +9,98 @@ import run_one
 
 
 class DirtyGitCliTests(unittest.TestCase):
+    def test_run_main_returns_nonzero_for_failed_slice(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        async def fake_slice(*_args, **_kwargs):
+            return ["failed"]
+
+        with patch("run_main.require_clean_worktree"), patch("run_main.run_slice_async", side_effect=fake_slice):
+            output = StringIO()
+            with redirect_stdout(output):
+                code = run_main.main(
+                    ["--model", "mock", "--campaign", "technical-smoke", "--task", "emergence:mixing:0-1"]
+                )
+            self.assertEqual(code, 2)
+            self.assertIn("failed statuses={'failed': 1}", output.getvalue())
+
+    def test_run_main_accepts_censored_and_explicit_skip(self):
+        async def fake_slice(*_args, **_kwargs):
+            return ["censored", "skipped"]
+
+        with patch("run_main.require_clean_worktree"), patch("run_main.run_slice_async", side_effect=fake_slice):
+            self.assertEqual(
+                run_main.main(
+                    ["--model", "mock", "--campaign", "technical-smoke", "--task", "emergence:mixing:0-1"]
+                ),
+                0,
+            )
+
+    def test_run_main_rejects_interrupted_and_unknown_statuses(self):
+        async def fake_slice(*_args, **_kwargs):
+            return ["interrupted", "unknown"]
+
+        with patch("run_main.require_clean_worktree"), patch("run_main.run_slice_async", side_effect=fake_slice):
+            self.assertEqual(
+                run_main.main(
+                    ["--model", "mock", "--campaign", "technical-smoke", "--task", "emergence:mixing:0-1"]
+                ),
+                2,
+            )
+
+    def test_run_one_rejects_invalid_inputs_before_writing(self):
+        from contextlib import redirect_stderr
+        from io import StringIO
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        common = ["--model", "mock"]
+        invalid = (
+            (["--program", "emergence", "--topology", "mixing", "--seed-index", "0"], "campaign"),
+            (["--program", "emergence", "--topology", "complete", "--seed-index", "0"], "unknown topology"),
+            (["--program", "cm", "--topology", "mixing", "--k", "8", "--seed-index", "0"], "must be one of"),
+            (["--program", "emergence", "--topology", "mixing", "--k", "5", "--seed-index", "0"], "only valid"),
+            (["--program", "emergence", "--topology", "mixing", "--seed-index", "-1"], "non-negative"),
+            (["--program", "emergence", "--topology", "mixing", "--seed-index", "32"], "less than"),
+        )
+        with TemporaryDirectory() as tmp:
+            artifact_root = Path(tmp)
+            for args, message in invalid:
+                argv = args + common + ([] if message == "campaign" else ["--campaign", "technical-smoke"]) + ["--artifact-root", str(artifact_root)]
+                with self.subTest(args=args), patch("run_one.ensure_campaign_files") as ensure:
+                    error = StringIO()
+                    with redirect_stderr(error), self.assertRaises(SystemExit) as raised:
+                        run_one.main(argv)
+                    self.assertEqual(raised.exception.code, 2)
+                    self.assertIn(message, error.getvalue())
+                    ensure.assert_not_called()
+            self.assertEqual(list(artifact_root.iterdir()), [])
+
+    def test_run_one_status_exit_and_campaign_contract(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        statuses = ("completed", "censored", "failed", "interrupted", "unknown")
+        with TemporaryDirectory() as tmp:
+            for status in statuses:
+                with self.subTest(status=status):
+                    files = {"pool": {"labels": ["aaaaa", "bbbbb"], "sha256": "pool"}}
+                    paths = SimpleNamespace(pickle_path=Path(tmp) / f"{status}.pkl", meta_path=Path(tmp) / f"{status}.meta.json")
+                    with patch("run_one.require_clean_worktree"), patch("run_one.ensure_campaign_files", return_value=files), patch(
+                        "run_one.build_client", return_value=object()
+                    ), patch("run_one.execute_run_async", new_callable=AsyncMock, return_value=paths) as execute, patch(
+                        "run_one.read_meta", return_value={"run_status": status}
+                    ), patch("run_one.current_commit", return_value="test"):
+                        code = run_one.main(
+                            ["--program", "emergence", "--model", "mock", "--topology", "mixing", "--seed-index", "0", "--campaign", "technical-smoke", "--artifact-root", tmp]
+                        )
+                    self.assertEqual(code, 0 if status in {"completed", "censored"} else 2)
+                    if status == "completed":
+                        self.assertEqual(execute.await_args.args[0].campaign, "technical-smoke")
+
     def test_continue_gated_cannot_run_tasks_or_other_admin_operations(self):
         for extra in (["--task", "emergence:mixing:0-1"], ["--extend-bounds"],
                       ["--post-gate-only"]):
@@ -725,7 +817,7 @@ class DirtyGitCliTests(unittest.TestCase):
                             str(root),
                         ]
                     )
-            self.assertEqual(code, 0)
+            self.assertEqual(code, 2)
             live = root / "jobs" / "4242.live.json"
             self.assertTrue(live.is_file())
             payload = json.loads(live.read_text(encoding="utf-8"))
@@ -784,7 +876,7 @@ class DirtyGitCliTests(unittest.TestCase):
                             str(root),
                         ]
                     )
-            self.assertEqual(code, 0)
+            self.assertEqual(code, 2)
             jobs = list((root / "jobs").glob("local-*.live.json"))
             self.assertEqual(len(jobs), 1)
             payload = json.loads(jobs[0].read_text(encoding="utf-8"))
@@ -1003,7 +1095,7 @@ class DirtyGitCliTests(unittest.TestCase):
     def test_run_one_refuses_dirty_tree(self):
         with patch("run_one.require_clean_worktree", side_effect=DirtyWorktreeError("dirty")):
             self.assertEqual(
-                run_one.main(["--program", "emergence", "--model", "mock", "--topology", "mixing", "--seed-index", "0"]),
+                run_one.main(["--program", "emergence", "--model", "mock", "--topology", "mixing", "--seed-index", "0", "--campaign", "technical-smoke"]),
                 2,
             )
 

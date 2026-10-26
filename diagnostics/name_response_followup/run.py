@@ -11,8 +11,11 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from design import MODELS, DEFAULT_REPEATS, make_cases, digest, advance_player
+try:
+    from .design import MODELS, DEFAULT_REPEATS, make_cases, digest, advance_player
+except ImportError:  # direct script execution from the repository checkout
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from design import MODELS, DEFAULT_REPEATS, make_cases, digest, advance_player
 from convention_topology.config import is_localhost_url, load_config, resolve_model
 from convention_topology.json_output import parse_decision
 from convention_topology.llm import chat_completion_kwargs

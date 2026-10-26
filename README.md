@@ -28,15 +28,51 @@ Its data and Yen jobs are separate from Main and the initial screening battery.
 
 ## Commands
 
+### Current source snapshot (2026-10-26)
+
+Python 3.12.1 on macOS ARM is the validated GPU-free setup. Run from a clean
+Git checkout; counted entry points refuse dirty trees so that the code revision
+is recorded with each artifact.
+
 ```bash
-python -m pytest tests -q
+python3.12 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-repro.txt
+pytest -q
+```
+
+`requirements-repro.txt` is the current macOS ARM validation snapshot. It is
+not a lock for the historical Yen environment. `mock` runs and analysis tests
+need no GPU or provider. Live counted runs need a local OpenAI-compatible vLLM
+server and a GPU; they are not reproduced by a mock run.
+
+```bash
 python run_main.py --print-queue --task emergence:mixing:0-32
 python run_main.py --model mock --campaign technical-smoke --artifact-root /tmp/campaign \
   --task emergence:mixing:0-1
-python run_one.py --program emergence --model mock --topology mixing --seed-index 0 --artifact-root /tmp/campaign
+python run_one.py --program emergence --model mock --topology mixing --seed-index 0 \
+  --campaign technical-smoke --artifact-root /tmp/campaign
 ```
 
-`--print-queue` prints the flattened `--task` list. `--print-jobs` is a deprecation error. Fit/timing jobs use `--campaign pilot-run` so artifacts are not `experiment`. Queue jobs require explicit `--campaign`. Every `diag-*` campaign except `diag-tech*` requires `DIAG_N`, `DIAG_H`, `DIAG_POOL`, `DIAG_DECODE`, and `DIAG_CAP`. Do not export `DIAG_LADDER` on counted or `pilot-run` jobs.
+`--print-queue` prints the flattened `--task` list. `--print-jobs` is a deprecation error. Fit/timing jobs use `--campaign pilot-run` so artifacts are not `experiment`. Writing counted runs requires an explicit named `--campaign`; read-only queue, health, and administrative commands have their own flags. Every `diag-*` campaign except `diag-tech*` requires `DIAG_N`, `DIAG_H`, `DIAG_POOL`, `DIAG_DECODE`, and `DIAG_CAP`. Do not export `DIAG_LADDER` on counted or `pilot-run` jobs.
+
+`run_one.py`
+accepts only the declared topology IDs, Study 2 `k` values `{5,10,14}`, and
+seed indices `0..31`; emergence has no `--k`. Failed, interrupted, or unknown
+run states return a non-zero status. `completed`, `censored`, and an explicit
+post-gate `skipped` state are successful.
+
+The source handover is source-only. It does not deliver raw data, submit Yen
+jobs, or reproduce historical GPU campaigns. The current thesis analysis is
+maintained in the private meta-repository under
+`specs/results-analysis/main-runs-2026-10-05/audit-corrections/per18057/`;
+this repository's `analyze.py` is the historical first-gate/cap analysis and
+does not regenerate the current fixed-1500 H1/H2 results. The source archive
+omits `archive/ops/`, TypeSafe material, Graphify output, local data/results,
+caches, and secrets; those paths remain in the working repository where
+needed. See [HANDOVER.md](HANDOVER.md) for the allowlist and archive check.
+The 2026-10-02 experiment backup is historical provenance only, not the final
+continuation data or analysis.
 
 Yen: clone/pull `/scratch/shared/$USER/exp/llm-convention-topology`, then from the repo root in the Jupyter Terminal:
 

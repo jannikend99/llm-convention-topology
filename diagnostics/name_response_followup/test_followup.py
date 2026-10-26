@@ -1,5 +1,4 @@
 """Offline checks for matched interventions, sequential history, and accounting."""
-import importlib.util
 import json
 import subprocess
 import sys
@@ -11,9 +10,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).parent
-sys.path.insert(0, str(HERE))
-import design
-import analyze
+from diagnostics.name_response_followup import analyze, design
 
 
 class DesignTests(unittest.TestCase):
@@ -210,7 +207,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(journal.read_bytes(),before)
 
     def test_materialized_retention_prompt_advances_true_round(self):
-        import run as runner
+        from diagnostics.name_response_followup import run as runner
         rows=design.make_cases('retention',1)
         by_id={}
         for row in rows[:37]:
@@ -234,7 +231,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual({r['model'] for r in report['batteries']},{'olmo31_32b','glm4_32b'})
 
     def test_http_failure_stops_after_three_without_retry_and_partial_analysis_fails(self):
-        import run as runner
+        from diagnostics.name_response_followup import run as runner
         spec=runner.resolve_model(runner.load_config(runner.ROOT/'config.yaml'),'olmo31_32b')
         calls=[]
         def fail(**kwargs):
@@ -267,9 +264,7 @@ class RunnerTests(unittest.TestCase):
                 analyze.analyze(metadata.parent)
 
     def test_response_validation_rejects_malformed_unknown_and_truncated(self):
-        spec=importlib.util.spec_from_file_location('followup_run',HERE/'run.py')
-        runner=importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(runner)
+        from diagnostics.name_response_followup import run as runner
         for text,finish in [('not json','stop'),('{"value":"unknown","reason":"ok"}','stop'),
                             ('{"value":"dicfv","reason":"ok"}','length')]:
             with self.assertRaises(Exception):

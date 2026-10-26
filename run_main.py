@@ -298,7 +298,16 @@ def main(argv: list[str] | None = None) -> int:
             **({"post_gate_only": True} if args.post_gate_only else {}),
         )
     )
-    return 2 if args.post_gate_only and "failed" in statuses else 0
+    # A counted slice is successful only when every cell reached a terminal
+    # usable state, or was explicitly skipped by --post-gate-only.  Unknown
+    # and interrupted states must reach the caller as failures.
+    successful = {"completed", "censored", "skipped"}
+    failed = [status for status in statuses if status not in successful]
+    if failed:
+        counts = {status: failed.count(status) for status in dict.fromkeys(failed)}
+        print(f"[slice] failed statuses={counts}", flush=True)
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
