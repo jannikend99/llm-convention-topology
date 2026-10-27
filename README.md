@@ -91,7 +91,7 @@ sbatch --export=ALL jobs/thesis_vllm.slurm -- \
   --campaign technical-smoke --model gemma4_e2b --task emergence:mixing:0-1
 ```
 
-Operator packet: thesis `specs/yen-configuration.md` and `specs/counted-job-queue.md`. This package does not submit jobs. Ashery ladder notes: `archive/ops/diag-ashery-ladder.md`. Pack downloads: `bash jobs/pack_yen_runs.sh`.
+Operator packet: thesis `specs/yen-configuration.md` and `specs/counted-job-queue.md`. This package does not submit jobs. Pack downloads: `bash jobs/pack_yen_runs.sh`.
 
 Campaign artifacts: laptop default `data/runs/<campaign>/` (gitignored). Do not use a leftover repo-root `runs/` tree. On Yen pass `--artifact-root /scratch/shared/$USER/runs/<campaign>/` (do not append the campaign name twice).
 
